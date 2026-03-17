@@ -21,57 +21,56 @@ export default function Dashboard() {
   const handleStatusChange = async (app: any, newStatus: string) => {
     let finalOffer = app.final_offer_salary;
     let onboardingDate = app.onboarding_date;
+    let rejectReason = app.rejection_reason;
 
-    // 1. Logic for OFFERED
     if (newStatus === 'Offered') {
       const amount = window.prompt(`Enter Final Offer Salary for ${app.name}:`, app.salary_expectation || "");
       if (amount === null) return; 
       finalOffer = amount;
     }
 
-    // 2. Logic for HIRED (Prompt for Date + Google Cal Link)
     if (newStatus === 'Hired') {
       const dateInput = window.prompt(`Enter Onboarding Date (YYYY-MM-DD):`, new Date().toISOString().split('T')[0]);
       if (dateInput === null) return;
       onboardingDate = dateInput;
-
-      // Generate a Google Calendar Link for the user to "Book Own Calendar"
-      const gCalTitle = encodeURIComponent(`Onboarding: ${app.name} (${app.job_role})`);
-      const gCalDetails = encodeURIComponent(`New hire starting!\nRole: ${app.job_role}\nSalary: ${app.final_offer_salary || 'N/A'}`);
+      const gCalTitle = encodeURIComponent(`Onboarding: ${app.name}`);
       const gCalDate = dateInput.replace(/-/g, '');
-      const gCalUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${gCalTitle}&dates=${gCalDate}/${gCalDate}&details=${gCalDetails}`;
-      
-      // Open Google Calendar in a new tab so the user can save the event
-      window.open(gCalUrl, '_blank');
+      window.open(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${gCalTitle}&dates=${gCalDate}/${gCalDate}`, '_blank');
+    }
+
+    // NEW: Reject Offer Logic
+    if (newStatus === 'Rejected Offer') {
+      const reason = window.prompt(`Why did ${app.name} reject the offer? (e.g., Salary too low, accepted elsewhere)`);
+      if (reason === null) return;
+      rejectReason = reason;
     }
 
     try {
       const updatedHistory = [...(app.status_history || []), { status: newStatus, date: new Date().toISOString() }];
-      
-      const { error } = await supabase
-        .from('applicants')
-        .update({ 
-          status: newStatus, 
-          status_history: updatedHistory,
-          final_offer_salary: finalOffer,
-          onboarding_date: onboardingDate
-        })
-        .eq('id', app.id);
-
+      const { error } = await supabase.from('applicants').update({ 
+        status: newStatus, 
+        status_history: updatedHistory,
+        final_offer_salary: finalOffer,
+        onboarding_date: onboardingDate,
+        rejection_reason: rejectReason
+      }).eq('id', app.id);
       if (error) throw error;
       fetchData();
     } catch (e) { alert("Update failed."); }
   };
 
-  // ... rest of the filtering and delete logic remains the same ...
   const activePipeline = applicants.filter(a => a.status !== 'Quit' && a.status !== 'Blacklisted');
-  const stats = {
-    all: activePipeline.length,
-    applied: activePipeline.filter(a => a.status === 'Applied').length,
-    interviewing: activePipeline.filter(a => a.status === 'Interviewing').length,
-    offered: activePipeline.filter(a => a.status === 'Offered').length,
-    hired: activePipeline.filter(a => a.status === 'Hired').length,
-  };
+
+  const statsConfig = [
+    { label: 'Total Pool', key: 'All', color: 'bg-slate-600', text: 'text-slate-600', border: 'border-slate-600' },
+    { label: 'Applied', key: 'Applied', color: 'bg-blue-500', text: 'text-blue-600', border: 'border-blue-500' },
+    { label: 'Interviewing', key: 'Interviewing', color: 'bg-amber-500', text: 'text-amber-600', border: 'border-amber-500' },
+    { label: 'Offered', key: 'Offered', color: 'bg-purple-500', text: 'text-purple-600', border: 'border-purple-500' },
+    { label: 'Hired', key: 'Hired', color: 'bg-emerald-500', text: 'text-emerald-600', border: 'border-emerald-500' },
+    { label: 'Rejected', key: 'Rejected Offer', color: 'bg-rose-500', text: 'text-rose-600', border: 'border-rose-500' },
+  ];
+
+  const getCount = (key) => key === 'All' ? activePipeline.length : activePipeline.filter(a => a.status === key).length;
 
   const filtered = activePipeline.filter(a => {
     const matchesSearch = a.name.toLowerCase().includes(searchTerm.toLowerCase()) || a.job_role.toLowerCase().includes(searchTerm.toLowerCase());
@@ -79,55 +78,112 @@ export default function Dashboard() {
     return matchesSearch && matchesStatus;
   });
 
-  if (loading) return <div className="p-20 text-center animate-pulse text-slate-400 font-bold">LOADING...</div>;
+  if (loading) return <div className="p-20 text-center animate-pulse text-slate-400 font-black">SYNCING GENIEBOOK DATA...</div>;
 
   return (
     <div className="space-y-8 animate-fade-in">
-      {/* STATS BAR */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        {/* Same Stat Card buttons as before... */}
-        {['All', 'Applied', 'Interviewing', 'Offered', 'Hired'].map((key) => (
-          <button key={key} onClick={() => setFilterStatus(key)} className={`p-4 rounded-2xl border bg-white ${filterStatus === key ? 'border-blue-500 ring-2 ring-blue-50' : 'border-slate-200'}`}>
-            <div className="text-[10px] font-black text-slate-400 uppercase mb-1">{key}</div>
-            <div className="text-2xl font-black">{key === 'All' ? stats.all : stats[key.toLowerCase()]}</div>
+      {/* 📊 COLOR-CODED STATS BAR */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        {statsConfig.map((s) => (
+          <button 
+            key={s.key} 
+            onClick={() => setFilterStatus(s.key)}
+            className={`p-4 rounded-2xl border-2 transition-all shadow-sm bg-white relative overflow-hidden ${
+              filterStatus === s.key ? `${s.border} ring-4 ring-slate-100` : 'border-transparent opacity-70 grayscale-[0.5] hover:opacity-100 hover:grayscale-0'
+            }`}
+          >
+            <div className={`absolute top-0 left-0 w-1 h-full ${s.color}`}></div>
+            <div className="text-[10px] font-black text-slate-400 uppercase mb-1">{s.label}</div>
+            <div className={`text-2xl font-black ${s.text}`}>{getCount(s.key)}</div>
           </button>
         ))}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {filtered.map((app) => (
-          <div key={app.id} className="bg-white border p-6 rounded-2xl shadow-sm relative overflow-hidden border-t-4" 
-               style={{ borderTopColor: app.status === 'Hired' ? '#10b981' : app.status === 'Offered' ? '#a855f7' : '#3b82f6' }}>
-            
-            <h3 className="font-bold text-lg">{app.name}</h3>
-            <p className="text-xs text-blue-600 font-bold uppercase mb-4">{app.job_role}</p>
+      <div className="flex flex-col md:flex-row justify-between items-end gap-4">
+        <h2 className="text-2xl font-black text-slate-800 tracking-tight">
+          {filterStatus === 'All' ? 'Full Pipeline' : filterStatus}
+        </h2>
+        <input 
+          type="text" placeholder="Search talent..." 
+          className="px-4 py-3 border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 w-full md:w-80 shadow-inner bg-slate-50"
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+      </div>
 
-            <div className="text-sm space-y-2 mb-6 text-slate-600">
-              <div>💰 Expect: <strong>{app.salary_expectation}</strong></div>
-              
-              {app.final_offer_salary && (
-                <div className="p-2 bg-slate-50 rounded-lg border border-slate-100 font-bold text-slate-800">
-                  {app.status === 'Hired' ? '🤝 Joined: ' : '✨ Offer: '} {app.final_offer_salary}
+      {/* PIPELINE GRID */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filtered.map((app) => (
+          <div key={app.id} className="bg-white border-2 border-slate-100 p-6 rounded-3xl shadow-sm relative group overflow-hidden transition-all hover:shadow-xl">
+            <div className={`absolute top-0 left-0 right-0 h-2 ${
+              app.status === 'Hired' ? 'bg-emerald-500' : 
+              app.status === 'Offered' ? 'bg-purple-500' : 
+              app.status === 'Rejected Offer' ? 'bg-rose-500' : 
+              app.status === 'Interviewing' ? 'bg-amber-500' : 'bg-blue-500'
+            }`}></div>
+
+            <div className="mb-4">
+              <h3 className="font-black text-xl text-slate-800">{app.name}</h3>
+              <div className="text-xs font-bold text-blue-600 uppercase">{app.job_role}</div>
+            </div>
+
+            <div className="text-sm space-y-3 mb-6">
+              <div className="p-3 bg-slate-50 rounded-xl space-y-1">
+                <div className="text-slate-500 text-[10px] font-bold uppercase">Compensation</div>
+                <div className="font-bold text-slate-800">Expects: {app.salary_expectation}</div>
+                {(app.status === 'Offered' || app.status === 'Hired') && app.final_offer_salary && (
+                  <div className="text-blue-600 font-black">Final: {app.final_offer_salary}</div>
+                )}
+              </div>
+
+              {app.status === 'Rejected Offer' && app.rejection_reason && (
+                <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl text-rose-700 text-xs italic">
+                  <strong>Reason:</strong> {app.rejection_reason}
                 </div>
               )}
 
               {app.status === 'Hired' && app.onboarding_date && (
-                <div className="p-2 bg-emerald-50 text-emerald-700 rounded-lg border border-emerald-100 font-bold animate-pulse">
-                  📅 Starts: {app.onboarding_date}
+                <div className="flex items-center gap-2 text-emerald-600 font-black text-xs">
+                  📅 STARTS: {app.onboarding_date}
                 </div>
               )}
             </div>
 
             <div className="flex flex-col gap-3">
-              <select value={app.status} onChange={(e) => handleStatusChange(app, e.target.value)} className="w-full border p-2 rounded-xl text-sm font-bold bg-slate-50">
+              <select 
+                value={app.status} 
+                onChange={(e) => handleStatusChange(app, e.target.value)}
+                className="w-full border-2 border-slate-100 rounded-xl px-3 py-2 text-sm font-bold bg-white cursor-pointer hover:border-blue-200"
+              >
                 <option value="Applied">Applied</option>
                 <option value="Interviewing">Interviewing</option>
                 <option value="Offered">Offered</option>
                 <option value="Hired">Hired</option>
+                <option value="Rejected Offer">Rejected Offer</option>
                 <option value="Quit">Archive: Quit</option>
               </select>
-              <a href={app.resume_metadata?.url} target="_blank" className="text-center bg-slate-800 text-white py-2 rounded-xl font-bold text-xs">VIEW RESUME</a>
+              <div className="flex gap-2">
+                <a href={app.resume_metadata?.url} target="_blank" className="flex-1 text-center bg-slate-900 text-white py-2.5 rounded-xl font-bold text-[10px] hover:bg-black transition-all">RESUME</a>
+                <button onClick={() => setShowHistoryId(showHistoryId === app.id ? null : app.id)} className="px-4 bg-slate-100 rounded-xl font-bold text-slate-500 hover:bg-slate-200">🕒</button>
+              </div>
             </div>
+
+            {/* HISTORY OVERLAY (Same as before) */}
+            {showHistoryId === app.id && (
+              <div className="absolute inset-0 bg-white/98 p-6 z-10 flex flex-col animate-fade-in">
+                <div className="flex justify-between items-center mb-4">
+                  <span className="font-black text-[10px] uppercase text-slate-400 tracking-widest">Candidate Journey</span>
+                  <button onClick={() => setShowHistoryId(null)} className="text-slate-300 hover:text-slate-800">✕</button>
+                </div>
+                <div className="overflow-y-auto space-y-4">
+                  {app.status_history?.map((h, i) => (
+                    <div key={i} className="border-l-2 border-blue-100 pl-4 py-1">
+                      <div className="text-[10px] font-black text-slate-800 uppercase">{h.status}</div>
+                      <div className="text-[10px] text-slate-400">{new Date(h.date).toLocaleDateString()}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ))}
       </div>
