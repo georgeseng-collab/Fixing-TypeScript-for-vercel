@@ -9,21 +9,27 @@ export default function Login() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    // Listener for session changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) navigate('/');
+      if (session) {
+        navigate('/');
+      }
     });
-    return () => subscription.unsubscribe();
+
+    return () => {
+      if (subscription) subscription.unsubscribe();
+    };
   }, [navigate]);
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
-      <div className="max-w-md w-full bg-white border border-slate-200 p-10 rounded-[2.5rem] shadow-xl">
-        <div className="text-center mb-10">
-          <div className="inline-flex items-center justify-center bg-blue-600 text-white w-14 h-14 rounded-2xl mb-4 font-black text-2xl">
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+      <div className="max-w-md w-full bg-white border border-slate-200 p-10 rounded-[2.5rem] shadow-2xl">
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center bg-blue-600 text-white w-12 h-12 rounded-2xl mb-4 font-black text-xl">
             GB
           </div>
           <h1 className="text-2xl font-black text-slate-800 tracking-tight">GenieBook ATS</h1>
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">Internal Portal</p>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2">Internal Access Only</p>
         </div>
 
         <Auth
@@ -37,13 +43,15 @@ export default function Login() {
               }
             }
           }}
-          providers={[]} 
+          providers={[]}
           theme="light"
         />
-        
-        <p className="mt-8 text-center text-[10px] text-slate-400 font-bold uppercase tracking-tighter">
-          Strictly @geniebook.com only
-        </p>
+
+        <div className="mt-8 text-center">
+          <p className="text-[10px] text-slate-400 font-black uppercase tracking-tighter">
+            Authorized Personnel Only
+          </p>
+        </div>
       </div>
     </div>
   );
