@@ -1,10 +1,13 @@
 // @ts-nocheck
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { supabase } from '../db';
 
 export default function Layout({ children }) {
-  const navLink = "flex items-center gap-2 text-slate-500 hover:text-blue-600 font-bold text-sm transition-all";
+  const location = useLocation();
+  const navLink = (path) => `flex items-center gap-2 px-3 py-2 rounded-xl font-bold text-sm transition-all ${
+    location.pathname === path ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50 hover:text-blue-600'
+  }`;
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
@@ -13,23 +16,23 @@ export default function Layout({ children }) {
           <div className="flex items-center gap-8">
             <Link to="/" className="text-xl font-black text-blue-600 flex items-center gap-2">
               <span className="bg-blue-600 text-white p-1.5 rounded-xl">GB</span>
-              <span className="hidden sm:inline tracking-tighter">GenieBook ATS</span>
+              <span className="hidden lg:inline tracking-tighter">GenieBook ATS</span>
             </Link>
-            <div className="hidden md:flex items-center gap-6">
-              <Link to="/" className={navLink}>📊 Pipeline</Link>
-              <Link to="/search" className={navLink}>🔍 Search</Link>
-              <Link to="/calendar" className={navLink}>📅 Calendar</Link>
+            <div className="hidden md:flex items-center gap-2">
+              <Link to="/" className={navLink('/')}>📊 Pipeline</Link>
+              <Link to="/search" className={navLink('/search')}>🔍 Search</Link>
+              <Link to="/calendar" className={navLink('/calendar')}>📅 Calendar</Link>
+              <Link to="/archive" className={navLink('/archive')}>🗄️ Archive</Link>
             </div>
           </div>
           
           <div className="flex items-center gap-4">
-            <Link to="/add" className="bg-blue-600 text-white px-5 py-2 rounded-xl font-bold text-xs hover:bg-blue-700 transition-all shadow-md shadow-blue-100">
+            <Link to="/add" className="hidden sm:block bg-blue-600 text-white px-5 py-2 rounded-xl font-bold text-xs hover:bg-blue-700 transition-all shadow-md shadow-blue-100">
               + New Candidate
             </Link>
-            <div className="h-6 w-[1px] bg-slate-100 mx-2"></div>
             <button 
               onClick={() => supabase.auth.signOut()}
-              className="text-[10px] font-black text-slate-400 hover:text-red-500 uppercase tracking-widest"
+              className="text-[10px] font-black text-slate-400 hover:text-red-500 uppercase transition-colors"
             >
               Log Out
             </button>
@@ -37,7 +40,7 @@ export default function Layout({ children }) {
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto px-6 py-10 animate-fade-in">
+      <main className="max-w-7xl mx-auto px-6 py-10">
         {children}
       </main>
     </div>
