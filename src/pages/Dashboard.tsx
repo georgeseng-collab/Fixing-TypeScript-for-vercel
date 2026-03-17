@@ -6,6 +6,7 @@ export default function Dashboard() {
   const [applicants, setApplicants] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
+  const [showHistoryId, setShowHistoryId] = useState<string | null>(null);
 
   const fetchData = async () => {
     try {
@@ -34,10 +35,8 @@ export default function Dashboard() {
     }
   };
 
-  // Filter for Active Pipeline only (excludes Quit/Blacklisted)
   const activePipeline = applicants.filter(a => a.status !== 'Quit' && a.status !== 'Blacklisted');
 
-  // Stats Calculation
   const stats = {
     total: activePipeline.length,
     applied: activePipeline.filter(a => a.status === 'Applied').length,
@@ -51,15 +50,15 @@ export default function Dashboard() {
     a.job_role.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  if (loading) return <div className="p-20 text-center animate-pulse text-slate-400 font-bold">LOADING PIPELINE...</div>;
+  if (loading) return <div className="p-20 text-center animate-pulse text-slate-400 font-bold tracking-widest">LOADING GENIEBOOK PIPELINE...</div>;
 
   return (
     <div className="space-y-8 animate-fade-in">
       
-      {/* 📊 STATS BAR */}
+      {/* 📊 SUMMARY STATS */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         {[
-          { label: 'Total Active', count: stats.total, color: 'bg-slate-800' },
+          { label: 'Total Pool', count: stats.total, color: 'bg-slate-800' },
           { label: 'Applied', count: stats.applied, color: 'bg-blue-500' },
           { label: 'Interviewing', count: stats.interviewing, color: 'bg-amber-500' },
           { label: 'Offered', count: stats.offered, color: 'bg-purple-500' },
@@ -75,87 +74,94 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* SEARCH & HEADER */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-800 tracking-tight">Recruitment Pipeline</h1>
-          <p className="text-slate-500 text-sm">Track and manage active candidate progress.</p>
-        </div>
-        <div className="relative">
-          <span className="absolute left-3 top-2.5 text-slate-400">🔍</span>
-          <input 
-            type="text" 
-            placeholder="Search by name or role..." 
-            className="pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 w-full md:w-80 bg-white shadow-sm transition-all"
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
+        <h1 className="text-3xl font-bold text-slate-800 tracking-tight">Active Pipeline</h1>
+        <input 
+          type="text" 
+          placeholder="Quick search..." 
+          className="px-4 py-2.5 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 w-full md:w-80 shadow-sm"
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
       </div>
 
       {/* PIPELINE GRID */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filtered.map((app) => (
-          <div key={app.id} className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm hover:shadow-md transition-all relative group border-t-4" 
-               style={{ borderTopColor: 
-                 app.status === 'Hired' ? '#10b981' : 
-                 app.status === 'Offered' ? '#a855f7' : 
-                 app.status === 'Interviewing' ? '#f59e0b' : '#3b82f6' 
-               }}>
-            
+          <div key={app.id} className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm relative group overflow-hidden">
+            {/* Status Color Bar */}
+            <div className={`absolute top-0 left-0 right-0 h-1.5 ${
+              app.status === 'Hired' ? 'bg-emerald-500' : 
+              app.status === 'Offered' ? 'bg-purple-500' : 
+              app.status === 'Interviewing' ? 'bg-amber-500' : 'bg-blue-500'
+            }`}></div>
+
             <button 
               onClick={() => handleDelete(app)}
               className="absolute top-4 right-4 text-slate-300 hover:text-red-500 transition-colors"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
+              🗑️
             </button>
 
             <div className="mb-4">
-              <h3 className="font-bold text-lg text-slate-800 leading-tight mb-1">{app.name}</h3>
-              <div className="text-xs font-bold text-blue-600 uppercase tracking-wider">{app.job_role}</div>
+              <h3 className="font-bold text-lg text-slate-800 leading-tight">{app.name}</h3>
+              <div className="text-xs font-bold text-blue-600 uppercase mt-1">{app.job_role}</div>
             </div>
 
             <div className="text-sm space-y-2 mb-6 text-slate-600">
-              <div className="flex items-center gap-2"><span>📧</span> {app.email}</div>
-              <div className="flex items-center gap-2"><span>📱</span> {app.phone}</div>
-              <div className="flex items-center gap-2 font-medium text-slate-800">
-                <span>💰</span> {app.salary_expectation}
-              </div>
+              <div className="flex items-center gap-2">📧 {app.email}</div>
+              <div className="flex items-center gap-2 font-bold text-slate-800 italic">💰 {app.salary_expectation}</div>
             </div>
 
+            {/* ACTION SECTION */}
             <div className="flex flex-col gap-3">
-              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Update Progress</div>
               <select 
                 value={app.status} 
                 onChange={(e) => handleStatusChange(app.id, e.target.value, app.status_history)}
-                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500 font-bold text-slate-700"
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500 font-bold"
               >
                 <option value="Applied">Applied</option>
                 <option value="Interviewing">Interviewing</option>
                 <option value="Offered">Offered</option>
                 <option value="Hired">Hired</option>
-                <option disabled>──────</option>
                 <option value="Quit">Archive: Quit</option>
                 <option value="Blacklisted">Archive: Blacklist</option>
               </select>
-              <a 
-                href={app.resume_metadata?.url} 
-                target="_blank" 
-                className="text-center bg-slate-800 text-white py-2 rounded-xl font-bold text-xs hover:bg-slate-900 transition-colors shadow-lg shadow-slate-100"
-              >
-                VIEW RESUME
-              </a>
+              
+              <div className="flex gap-2">
+                <a href={app.resume_metadata?.url} target="_blank" className="flex-1 text-center bg-slate-800 text-white py-2 rounded-xl font-bold text-xs hover:bg-slate-900 transition-colors">
+                  VIEW RESUME
+                </a>
+                <button 
+                  onClick={() => setShowHistoryId(showHistoryId === app.id ? null : app.id)}
+                  className="px-3 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition-colors text-xs font-bold"
+                  title="View Progress History"
+                >
+                  {showHistoryId === app.id ? '✕' : '🕒'}
+                </button>
+              </div>
             </div>
+
+            {/* 🕒 HISTORY TIMELINE OVERLAY */}
+            {showHistoryId === app.id && (
+              <div className="absolute inset-0 bg-white/95 p-6 z-10 animate-fade-in flex flex-col">
+                <div className="flex justify-between items-center mb-4">
+                  <h4 className="font-black text-xs uppercase tracking-widest text-slate-400">Status History</h4>
+                  <button onClick={() => setShowHistoryId(null)} className="text-slate-400 hover:text-slate-800 text-lg">×</button>
+                </div>
+                <div className="flex-grow overflow-y-auto space-y-4">
+                  {app.status_history?.map((h: any, idx: number) => (
+                    <div key={idx} className="relative pl-6 border-l-2 border-slate-100 pb-1">
+                      <div className="absolute -left-[7px] top-1 w-3 h-3 rounded-full bg-blue-500 border-2 border-white"></div>
+                      <div className="text-xs font-bold text-slate-800 uppercase">{h.status}</div>
+                      <div className="text-[10px] text-slate-400">{new Date(h.date).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ))}
       </div>
-
-      {filtered.length === 0 && (
-        <div className="text-center py-20 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200 text-slate-400 font-medium">
-          No candidates currently in the pipeline.
-        </div>
-      )}
     </div>
   );
 }
