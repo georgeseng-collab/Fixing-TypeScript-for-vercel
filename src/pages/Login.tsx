@@ -9,49 +9,26 @@ export default function Login() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Listener for session changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) {
-        navigate('/');
-      }
+      if (session) navigate('/');
     });
-
-    return () => {
-      if (subscription) subscription.unsubscribe();
-    };
+    return () => subscription.unsubscribe();
   }, [navigate]);
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-white border border-slate-200 p-10 rounded-[2.5rem] shadow-2xl">
+      <div className="max-w-md w-full bg-white border p-10 rounded-[2rem] shadow-xl">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center bg-blue-600 text-white w-12 h-12 rounded-2xl mb-4 font-black text-xl">
-            GB
-          </div>
-          <h1 className="text-2xl font-black text-slate-800 tracking-tight">GenieBook ATS</h1>
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2">Internal Access Only</p>
+          <div className="inline-block bg-blue-600 text-white p-3 rounded-2xl mb-4 font-black">GB</div>
+          <h1 className="text-2xl font-black text-slate-800">GenieBook ATS</h1>
+          <p className="text-[10px] text-slate-400 font-bold uppercase mt-2">@geniebook.com only</p>
         </div>
-
         <Auth
           supabaseClient={supabase}
-          appearance={{ 
-            theme: ThemeSupa,
-            variables: {
-              default: {
-                colors: { brand: '#2563eb', brandAccent: '#1d4ed8' },
-                radii: { borderRadiusButton: '12px', inputBorderRadius: '12px' }
-              }
-            }
-          }}
+          appearance={{ theme: ThemeSupa }}
           providers={[]}
           theme="light"
         />
-
-        <div className="mt-8 text-center">
-          <p className="text-[10px] text-slate-400 font-black uppercase tracking-tighter">
-            Authorized Personnel Only
-          </p>
-        </div>
       </div>
     </div>
   );
