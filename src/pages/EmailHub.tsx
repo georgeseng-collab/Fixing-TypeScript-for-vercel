@@ -10,15 +10,6 @@ export default function EmailHub() {
   const [isSingaporean, setIsSingaporean] = useState(true); 
   const [copyStatus, setCopyStatus] = useState(false);
   
-  const schedules = {
-    "Sales (Fixed)": { type: 'sales', days: "3 weekdays + 2 weekends", hours: "• Weekdays (Mon - Thurs) : 12.30pm - 8.30pm\n• Weekdays (Fri) : 12pm - 9pm\n• Weekends (Sat - Sun) : 11am - 9pm" },
-    "Curriculum (Teacher 5+1)": { type: 'teacher', days: "5 Weekdays + 1 Weekend", hours: "• Weekdays : 12pm to 9pm\n• Weekends : 9am to 6.30pm" },
-    "Curriculum (Teacher 3+2)": { type: 'teacher', days: "3 Weekdays + 2 Weekend", hours: "• Weekdays : 12pm to 9pm\n• Weekends : 9am to 6.30pm" },
-    "Curriculum (Teacher 4+1)": { type: 'teacher', days: "4 Weekdays + 1 Weekend", hours: "• Weekdays : 12pm to 9pm\n• Weekends : 9am to 6.30pm" },
-    "Office Standard": { type: 'office', days: "5 Weekdays", hours: "• 10am to 7pm" },
-    "Relationship Executive": { type: 'office', days: "3 weekdays + 2 weekends", hours: "• Weekdays (Mon - Friday) : 12.30pm - 9pm\n• Weekends (Sat - Sun) : 8.30am - 6.30pm" }
-  };
-
   const [details, setDetails] = useState({
     salary: '3000',
     scheduleKey: "Sales (Fixed)",
@@ -28,11 +19,22 @@ export default function EmailHub() {
     offerExpiry: '2026-03-20'
   });
 
+  const schedules = {
+    "Sales (Fixed)": { type: 'sales', days: "3 weekdays + 2 weekends", hours: "• Weekdays (Mon - Thurs) : 12.30pm - 8.30pm\n• Weekdays (Fri) : 12pm - 9pm\n• Weekends (Sat - Sun) : 11am - 9pm" },
+    "Curriculum (Teacher 5+1)": { type: 'teacher', days: "5 Weekdays + 1 Weekend", hours: "• Weekdays : 12pm to 9pm\n• Weekends : 9am to 6.30pm" },
+    "Curriculum (Teacher 4+1)": { type: 'teacher', days: "4 Weekdays + 1 Weekend", hours: "• Weekdays : 12pm to 9pm\n• Weekends : 9am to 6.30pm" },
+    "Curriculum (Teacher 3+2)": { type: 'teacher', days: "3 Weekdays + 2 Weekend", hours: "• Weekdays : 12pm to 9pm\n• Weekends : 9am to 6.30pm" },
+    "Office Standard": { type: 'office', days: "5 Weekdays", hours: "• 10am to 7pm" },
+    "Relationship Executive": { type: 'office', days: "3 weekdays + 2 weekends", hours: "• Weekdays (Mon - Friday) : 12.30pm - 9pm\n• Weekends (Sat - Sun) : 8.30am - 6.30pm" }
+  };
+
+  useEffect(() => { fetchData(); }, []);
+
   const fetchData = async () => {
-    // CRITICAL: Filter changed to ONLY 'Offered'
+    // FIX: Include 'Offer Accepted' so candidates stay visible
     const { data: apps } = await supabase.from('applicants')
-      .select('id, name, email, job_role')
-      .eq('status', 'Offered')
+      .select('id, name, email, job_role, current_salary, expected_salary')
+      .in('status', ['Offered', 'Offer Accepted'])
       .order('name');
     
     const { data: hist } = await supabase.from('offer_history')
@@ -43,12 +45,19 @@ export default function EmailHub() {
     setHistory(hist || []);
   };
 
-  useEffect(() => { fetchData(); }, []);
+  const handleCandidateChange = (id) => {
+    setSelectedId(id);
+    const app = applicants.find(a => a.id === id);
+    if (app) {
+      // Auto-populate salary from their expectation
+      setDetails(prev => ({...prev, salary: app.expected_salary || '3000'}));
+    }
+  };
 
   const selectedApp = applicants.find(a => a.id === selectedId);
   const currentSchedule = schedules[details.scheduleKey];
-  const showTrainingCost = currentSchedule.type === 'sales' || currentSchedule.type === 'teacher';
   const trainingCostAmount = isSingaporean ? "$2,000" : "$1,000";
+  const showTrainingCost = currentSchedule.type === 'sales' || currentSchedule.type === 'teacher';
 
   const handleDispatch = async () => {
     if (!selectedId) return alert("Select candidate first.");
@@ -60,7 +69,6 @@ export default function EmailHub() {
       await navigator.clipboard.write(data);
       setCopyStatus(true);
 
-      // Log to history
       await supabase.from('offer_history').insert([{
         applicant_id: selectedApp.id,
         applicant_name: selectedApp.name,
@@ -68,8 +76,7 @@ export default function EmailHub() {
         salary: details.salary
       }]);
 
-      const role = selectedApp?.job_role || 'Outbound Education Consultant';
-      const subject = `Congratulations_Offered (${role}) _ ${selectedApp?.name}`;
+      const subject = `Congratulations_Offered (${selectedApp?.job_role}) _ ${selectedApp?.name}`;
       const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${selectedApp?.email}&su=${encodeURIComponent(subject)}`;
       
       window.open(gmailUrl, '_blank');
@@ -78,78 +85,107 @@ export default function EmailHub() {
     } catch (err) { alert("Copy failed."); }
   };
 
-  const deleteHistoryOnly = async (id) => {
-    if (confirm("Remove this entry from history log?")) {
+  const deleteHistory = async (id) => {
+    if (window.confirm("Delete record?")) {
       await supabase.from('offer_history').delete().eq('id', id);
       fetchData();
     }
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-10 pb-40">
-      {/* HEADER SECTION */}
-      <div className="flex justify-between items-center mb-10 border-b-8 border-slate-900 pb-8">
-        <h1 className="text-5xl font-black uppercase italic tracking-tighter">Offer Hub</h1>
+    <div className="max-w-[1600px] mx-auto px-8 py-10 pb-40">
+      {/* HEADER */}
+      <div className="flex justify-between items-end mb-12 border-b-[10px] border-slate-900 pb-10">
+        <h1 className="text-7xl font-black uppercase italic tracking-tighter text-slate-900 leading-none">Offer Hub</h1>
         <div className="flex gap-4">
-           <div className="bg-slate-200 p-1.5 rounded-2xl flex gap-1">
-              <button onClick={() => setIsFullTimeStaff(true)} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${isFullTimeStaff ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}>Full Time Staff</button>
-              <button onClick={() => setIsFullTimeStaff(false)} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase ${!isFullTimeStaff ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}>Part Time</button>
+           <div className="bg-slate-200 p-2 rounded-3xl flex gap-1 shadow-inner">
+              <button onClick={() => setIsFullTimeStaff(true)} className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase transition-all ${isFullTimeStaff ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}>Full Time</button>
+              <button onClick={() => setIsFullTimeStaff(false)} className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase ${!isFullTimeStaff ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}>Part Time</button>
            </div>
-           <div className="bg-slate-200 p-1.5 rounded-2xl flex gap-1">
-              <button onClick={() => setIsSingaporean(true)} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${isSingaporean ? 'bg-white shadow text-emerald-600' : 'text-slate-500'}`}>Singaporean</button>
-              <button onClick={() => setIsSingaporean(false)} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${!isSingaporean ? 'bg-white shadow text-emerald-600' : 'text-slate-500'}`}>Malaysian</button>
+           <div className="bg-slate-900 p-2 rounded-3xl flex gap-1 shadow-2xl">
+              <button onClick={() => setIsSingaporean(true)} className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase transition-all ${isSingaporean ? 'bg-white text-emerald-600 shadow-xl' : 'text-slate-500'}`}>Singaporean</button>
+              <button onClick={() => setIsSingaporean(false)} className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase transition-all ${!isSingaporean ? 'bg-white text-emerald-600 shadow-xl' : 'text-slate-500'}`}>Malaysian</button>
            </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
         <div className="lg:col-span-4 space-y-6">
-          <div className="bg-white p-8 rounded-[3.5rem] shadow-2xl border-4 border-slate-900 space-y-4">
-            <p className="text-[10px] font-black text-blue-600 uppercase ml-4">Showing: 'Offered' Stage Only</p>
-            <select className="w-full p-4 bg-slate-50 rounded-2xl font-bold text-sm border-2 border-slate-100 focus:border-blue-600 outline-none" value={selectedId} onChange={e => setSelectedId(e.target.value)}>
-              <option value="">Choose Candidate...</option>
-              {applicants.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-            </select>
-            {/* ... rest of the settings inputs ... */}
-            <select className="w-full p-4 bg-slate-50 rounded-2xl font-bold text-sm" value={details.scheduleKey} onChange={e => setDetails({...details, scheduleKey: e.target.value})}>
-              {Object.keys(schedules).map(k => <option key={k} value={k}>{k}</option>)}
-            </select>
-            <div className="grid grid-cols-2 gap-4">
-              <input className="p-4 bg-slate-50 rounded-2xl font-bold text-sm" placeholder="Salary" value={details.salary} onChange={e => setDetails({...details, salary: e.target.value})} />
-              <input type="date" className="p-4 bg-slate-50 rounded-2xl font-bold text-sm" value={details.joinDate} onChange={e => setDetails({...details, joinDate: e.target.value})} />
+          <div className="bg-white p-10 rounded-[4rem] shadow-2xl border-4 border-slate-900 space-y-5">
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <label className={labelClass}>Candidate</label>
+                <select className={selectClass} value={selectedId} onChange={e => handleCandidateChange(e.target.value)}>
+                  <option value="">Choose Candidate...</option>
+                  {applicants.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+                {selectedApp && <p className="text-[9px] font-bold text-blue-600 ml-4 uppercase">Expected: ${selectedApp.expected_salary}</p>}
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className={labelClass}>Monthly Salary</label>
+                  <input className={inputClass} value={details.salary} onChange={e => setDetails({...details, salary: e.target.value})} />
+                </div>
+                <div className="space-y-1">
+                  <label className={labelClass}>Join Date</label>
+                  <input type="date" className={inputClass} value={details.joinDate} onChange={e => setDetails({...details, joinDate: e.target.value})} />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className={labelClass}>Working Hours Schedule</label>
+                <select className={selectClass} value={details.scheduleKey} onChange={e => setDetails({...details, scheduleKey: e.target.value})}>
+                  {Object.keys(schedules).map(k => <option key={k} value={k}>{k}</option>)}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className={labelClass}>Notice Period</label>
+                  <input className={inputClass} value={details.noticePeriod} onChange={e => setDetails({...details, noticePeriod: e.target.value})} />
+                </div>
+                <div className="space-y-1">
+                  <label className={labelClass}>Offer Expiry</label>
+                  <input type="date" className={inputClass} value={details.offerExpiry} onChange={e => setDetails({...details, offerExpiry: e.target.value})} />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className={labelClass}>Probation</label>
+                <input className={inputClass} value={details.probation} onChange={e => setDetails({...details, probation: e.target.value})} />
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <input className="p-4 bg-slate-50 rounded-2xl font-bold text-sm" placeholder="Notice" value={details.noticePeriod} onChange={e => setDetails({...details, noticePeriod: e.target.value})} />
-              <input type="date" className="p-4 bg-slate-50 rounded-2xl font-bold text-sm" value={details.offerExpiry} onChange={e => setDetails({...details, offerExpiry: e.target.value})} />
-            </div>
-            <button onClick={handleDispatch} className={`w-full py-8 text-white rounded-[2.5rem] font-black uppercase tracking-[0.2em] shadow-xl transition-all ${copyStatus ? 'bg-emerald-500' : 'bg-red-600 hover:bg-slate-900'}`}>
-              {copyStatus ? '✅ COPIED!' : '🚀 DISPATCH GMAIL'}
+
+            <button onClick={handleDispatch} className={`w-full py-8 text-white rounded-[2.5rem] font-black uppercase text-sm tracking-[0.3em] shadow-2xl transition-all active:scale-95 ${copyStatus ? 'bg-emerald-500' : 'bg-red-600 hover:bg-slate-900'}`}>
+              {copyStatus ? '✅ COPIED & OPENED' : '🚀 DISPATCH OFFER'}
             </button>
           </div>
 
-          {/* HISTORY LOG */}
-          <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white max-h-[400px] overflow-y-auto">
-            <h3 className="text-xs font-black uppercase tracking-widest text-blue-400 mb-4 tracking-tighter">Dispatch History</h3>
-            {history.map(h => (
-              <div key={h.id} className="flex justify-between items-center bg-slate-800 p-4 rounded-xl mb-2 group border border-transparent hover:border-slate-600 transition-all">
-                <div>
-                  <div className="text-[11px] font-black uppercase tracking-tight">{h.applicant_name}</div>
-                  <div className="text-[9px] text-slate-400 font-bold">${h.salary} - {new Date(h.sent_at).toLocaleDateString()}</div>
-                </div>
-                <button onClick={() => deleteHistoryOnly(h.id)} className="opacity-0 group-hover:opacity-100 text-red-500 text-xs font-black p-2 hover:bg-red-500/10 rounded-lg transition-all">✕</button>
-              </div>
-            ))}
+          <div className="bg-slate-900 rounded-[3rem] p-10 text-white min-h-[300px]">
+             <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-400 mb-6">Dispatch History</h3>
+             <div className="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
+               {history.map(h => (
+                 <div key={h.id} className="group bg-slate-800/50 p-5 rounded-2xl flex justify-between items-center border border-transparent hover:border-slate-700 transition-all">
+                   <div>
+                     <p className="font-black text-[11px] uppercase tracking-tight">{h.applicant_name}</p>
+                     <p className="text-[9px] font-bold text-slate-500 mt-1">${h.salary} • {new Date(h.sent_at).toLocaleDateString()}</p>
+                   </div>
+                   <button onClick={() => deleteHistory(h.id)} className="opacity-0 group-hover:opacity-100 p-2 text-red-500">✕</button>
+                 </div>
+               ))}
+             </div>
           </div>
         </div>
 
-        {/* EMAIL PREVIEW */}
-        <div className="lg:col-span-8 bg-white p-12 rounded-[4.5rem] shadow-2xl border border-slate-100">
-           <div id="email-content" style={{ color: '#000', fontFamily: 'Arial, sans-serif', fontSize: '15px', lineHeight: '1.4' }}>
+        {/* PREVIEW */}
+        <div className="lg:col-span-8 bg-white p-20 rounded-[5rem] shadow-2xl border border-slate-100 min-h-[1000px]">
+          <div id="email-content" style={{ color: '#000', fontFamily: 'Arial, sans-serif', fontSize: '15px', lineHeight: '1.4' }}>
               <p>Dear {selectedApp?.name || 'Candidate'},</p>
               <br />
               <p>Thank you for your time and effort in preparing & attending our interviews.</p>
               <br />
-              <p>We are pleased to offer you the role of <strong>{selectedApp?.job_role || 'Outbound Education Consultant'}</strong> with Geniebook Pte Ltd.</p>
+              <p>We are pleased to offer you the role of <strong>{selectedApp?.job_role || 'Position'}</strong> with Geniebook Pte Ltd.</p>
               <br />
               <p>Details are as follows :</p>
               <table style={{ borderCollapse: 'collapse', width: '100%', border: '1px solid #000', marginTop: '10px' }}>
@@ -213,3 +249,7 @@ export default function EmailHub() {
     </div>
   );
 }
+
+const inputClass = "w-full p-4 bg-slate-50 rounded-2xl font-bold text-xs border-2 border-transparent focus:border-blue-600 outline-none transition-all shadow-inner";
+const selectClass = "w-full p-4 bg-slate-50 rounded-2xl font-bold text-xs border-2 border-transparent focus:border-blue-600 outline-none cursor-pointer";
+const labelClass = "text-[10px] font-black uppercase text-slate-400 ml-4 mb-1 block tracking-[0.2em]";
