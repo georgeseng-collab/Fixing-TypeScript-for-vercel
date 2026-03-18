@@ -24,6 +24,7 @@ export default function CalendarView() {
   const [selectedEventId, setSelectedEventId] = useState(null);
   
   const [searchCandidate, setSearchCandidate] = useState('');
+  const [guestEmails, setGuestEmails] = useState(''); // NEW: Guest list state
   const [resumeFile, setResumeFile] = useState(null);
   const [formDate, setFormDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [formTime, setFormTime] = useState('10:00');
@@ -34,10 +35,9 @@ export default function CalendarView() {
       if (error) throw error;
       setApplicants(data || []);
       
-      // FIX: Only show events that have the 'isManual' flag set to true
       const calendarEvents = (data || []).flatMap(app => 
         (app.status_history || [])
-          .filter(h => h && h.isManual === true) // <--- Only show manual bookings
+          .filter(h => h && h.isManual === true) 
           .map((h, idx) => ({
             id: `${app.id}___${idx}`,
             candidate: app,
@@ -84,7 +84,7 @@ export default function CalendarView() {
         } catch (e) { console.warn("Resume retrieval failed:", e); }
       }
 
-      // Sync to Google
+      // Sync to Google including Guests
       await fetch(GOOGLE_SCRIPT_URL, {
         method: 'POST',
         mode: 'no-cors', 
@@ -96,11 +96,11 @@ export default function CalendarView() {
           time: formTime,
           fileName: fileName,
           contentType: contentType,
-          fileBase64: base64File
+          fileBase64: base64File,
+          guests: guestEmails // NEW: Sending guest list string
         })
       });
 
-      // Update Database
       const finalTimestamp = `${formDate}T${formTime}:00+08:00`;
       let updatedHistory = [...(selectedApp.status_history || [])];
 
@@ -108,10 +108,9 @@ export default function CalendarView() {
         const idx = parseInt(selectedEventId.split('___')[1]);
         if (updatedHistory[idx]) {
           updatedHistory[idx].date = finalTimestamp;
-          updatedHistory[idx].isManual = true; // Mark as manual on update
+          updatedHistory[idx].isManual = true;
         }
       } else {
-        // FIX: Add 'isManual' flag so the calendar knows this is a manual booking
         updatedHistory.push({ 
           status: 'Interviewing', 
           date: finalTimestamp, 
@@ -124,8 +123,9 @@ export default function CalendarView() {
         status_history: updatedHistory 
       }).eq('id', selectedApp.id);
 
-      alert("Success! Google Calendar updated.");
+      alert("Success! Google Calendar updated and Invites Sent.");
       setShowModal(false);
+      setGuestEmails(''); // Clear guests
       setResumeFile(null);
       fetchData();
     } catch (err) {
@@ -152,7 +152,6 @@ export default function CalendarView() {
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-10 relative pb-32">
-      {/* Header */}
       <div className="bg-white p-12 rounded-[4rem] border-4 border-slate-900 shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] flex justify-between items-center mb-12">
         <div>
           <h1 className="text-6xl font-black text-slate-900 italic tracking-tighter uppercase leading-none">Scheduler</h1>
@@ -166,7 +165,6 @@ export default function CalendarView() {
         </button>
       </div>
 
-      {/* Calendar Grid */}
       <div className="bg-white p-10 rounded-[4.5rem] border-4 border-slate-900 shadow-[20px_20px_0px_0px_rgba(15,23,42,1)]" style={{ height: '800px' }}>
         <Calendar 
           localizer={localizer} 
@@ -201,7 +199,6 @@ export default function CalendarView() {
         />
       </div>
 
-      {/* Modal Interface */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-[100] flex items-center justify-center p-6">
           <div className="bg-white w-full max-w-lg rounded-[4rem] border-8 border-slate-900 shadow-[25px_25px_0px_0px_rgba(0,0,0,1)] overflow-hidden relative animate-in zoom-in duration-200">
@@ -251,9 +248,6 @@ export default function CalendarView() {
                   <div className="bg-slate-900 p-8 rounded-[3rem] text-white border-4 border-slate-900">
                     <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Target Candidate</p>
                     <div className="text-3xl font-black italic uppercase tracking-tighter leading-none">{selectedApp?.name}</div>
-                    <div className="text-[10px] font-black text-white/40 uppercase tracking-widest mt-2">
-                      {selectedApp?.job_role} {selectedApp?.resume_metadata?.url ? '• Resume Ready' : ''}
-                    </div>
                   </div>
                   
                   <div className="space-y-3">
@@ -262,6 +256,18 @@ export default function CalendarView() {
                       <input type="date" className="p-5 bg-slate-50 border-4 border-slate-900 rounded-[2rem] font-black outline-none uppercase text-xs" value={formDate} onChange={e => setFormDate(e.target.value)} />
                       <input type="time" className="p-5 bg-slate-50 border-4 border-slate-900 rounded-[2rem] font-black outline-none uppercase text-xs" value={formTime} onChange={e => setFormTime(e.target.value)} />
                     </div>
+                  </div>
+
+                  {/* NEW GUEST INVITE FIELD */}
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-4 tracking-widest italic">Invite Interviewers (Emails)</label>
+                    <input 
+                      type="text" 
+                      placeholder="interviewer1@geniebook.com, boss@geniebook.com"
+                      className="w-full p-5 bg-slate-50 border-4 border-slate-900 rounded-[2rem] font-bold outline-none text-xs" 
+                      value={guestEmails}
+                      onChange={e => setGuestEmails(e.target.value)}
+                    />
                   </div>
 
                   <div className="space-y-3">
@@ -276,14 +282,14 @@ export default function CalendarView() {
                   <div className="flex flex-col gap-4 pt-4">
                     <button 
                       onClick={handleSave} 
-                      className="w-full py-6 bg-blue-600 text-white rounded-[2.5rem] border-4 border-slate-900 font-black text-sm uppercase tracking-widest shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-4px] active:translate-y-[2px] active:shadow-none transition-all"
+                      className="w-full py-6 bg-blue-600 text-white rounded-[2.5rem] border-4 border-slate-900 font-black text-sm uppercase tracking-widest shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-4px] active:translate-y-[2px] transition-all"
                     >
                         Confirm & Sync
                     </button>
                     {isManagementMode ? (
                         <button onClick={confirmDelete} className="w-full py-4 text-rose-600 font-black text-[10px] uppercase tracking-widest hover:bg-rose-50 rounded-2xl transition-all">Delete Schedule</button>
                     ) : (
-                        <button onClick={() => setStep(1)} className="w-full py-4 text-slate-400 font-black text-[10px] uppercase tracking-widest hover:bg-slate-50 rounded-2xl transition-all">Back to List</button>
+                        <button onClick={() => setStep(1)} className="w-full py-4 text-slate-400 font-black text-[10px] uppercase tracking-widest hover:bg-slate-50 rounded-2xl transition-all">Back</button>
                     )}
                   </div>
                 </div>
