@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useEffect, useState } from 'react';
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
-import { format, parse, startOfWeek, getDay, addHours } from 'date-fns';
+import { format, parse, startOfWeek, getDay, addHours, isEqual } from 'date-fns';
 import { enUS } from 'date-fns/locale';
 import { supabase } from '../db';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
@@ -22,6 +22,7 @@ export default function CalendarView() {
   const [step, setStep] = useState(1);
   const [selectedApp, setSelectedApp] = useState(null);
   const [selectedEventId, setSelectedEventId] = useState(null);
+  const [activeEventDate, setActiveEventDate] = useState(null); // <--- New State for matching
   const [isManagementMode, setIsManagementMode] = useState(false);
   
   const [searchCandidate, setSearchCandidate] = useState('');
@@ -47,7 +48,8 @@ export default function CalendarView() {
             candidate: app,
             start: new Date(h.date),
             end: addHours(new Date(h.date), 1),
-            title: `INTERVIEW: ${app.name}`
+            title: `INTERVIEW: ${app.name}`,
+            rawDate: h.date // Keep the exact string for matching later
           }))
       );
       setEvents(calendarEvents);
@@ -111,8 +113,9 @@ export default function CalendarView() {
       let updatedHistory = [...(selectedApp.status_history || [])];
 
       if (isManagementMode) {
-        const idx = parseInt(selectedEventId.split('___')[1]);
-        if (updatedHistory[idx]) updatedHistory[idx].date = finalTimestamp;
+        // Find the index of the entry we are currently editing based on the original timestamp
+        const matchIdx = updatedHistory.findIndex(h => h.date === activeEventDate);
+        if (matchIdx > -1) updatedHistory[matchIdx].date = finalTimestamp;
       } else {
         updatedHistory.push({ status: 'Interviewing', date: finalTimestamp, isManual: true });
       }
@@ -126,26 +129,38 @@ export default function CalendarView() {
     finally { setIsSyncing(false); }
   };
 
-  // RESTORED: Confirm Delete Function
+  // --- REBUILT: DELETE BY TIMESTAMP MATCHING ---
   const confirmDelete = async () => {
-    if (!selectedEventId || !window.confirm("ARE YOU SURE? This will remove the schedule from the ATS.")) return;
+    if (!activeEventDate || !window.confirm("DELETE INTERVIEW? This will remove it from the ATS record.")) return;
     
-    const [candId, idxStr] = selectedEventId.split('___');
-    const idx = parseInt(idxStr);
-
     try {
-      const { data: fresh } = await supabase.from('applicants').select('status_history').eq('id', candId).single();
-      const newHistory = [...(fresh?.status_history || [])];
+      setIsSyncing(true);
+      // 1. Get fresh data for this specific applicant
+      const { data: fresh, error } = await supabase
+        .from('applicants')
+        .select('status_history')
+        .eq('id', selectedApp.id)
+        .single();
       
-      // Remove the specific entry
-      newHistory.splice(idx, 1);
+      if (error) throw error;
+
+      // 2. Filter out the entry that matches the timestamp exactly
+      const newHistory = (fresh.status_history || []).filter(h => h.date !== activeEventDate);
       
-      await supabase.from('applicants').update({ status_history: newHistory }).eq('id', candId);
+      // 3. Update Supabase
+      const { error: updateError } = await supabase
+        .from('applicants')
+        .update({ status_history: newHistory })
+        .eq('id', selectedApp.id);
+
+      if (updateError) throw updateError;
       
       setShowModal(false);
       fetchData();
     } catch (e) {
       alert("Delete failed: " + e.message);
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -154,6 +169,7 @@ export default function CalendarView() {
     setCustomGuest('');
     setResumeFile(null);
     setSearchCandidate('');
+    setActiveEventDate(null);
   };
 
   if (loading) return (
@@ -164,21 +180,22 @@ export default function CalendarView() {
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-10 pb-32">
-      {/* Header Container */}
       <div className="bg-white p-10 rounded-[3rem] border-4 border-slate-900 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex justify-between items-center mb-10">
         <h1 className="text-5xl font-black text-slate-900 italic tracking-tighter uppercase leading-none">Scheduler</h1>
         <button onClick={() => { setIsManagementMode(false); setStep(1); setShowModal(true); }} className="bg-blue-600 text-white px-8 py-4 rounded-2xl border-4 border-slate-900 font-black text-xs uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-slate-900 transition-all">+ New Schedule</button>
       </div>
 
-      {/* Calendar Area */}
       <div className="bg-white p-8 rounded-[3rem] border-4 border-slate-900 shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] h-[800px]">
         <Calendar localizer={localizer} events={events} selectable defaultView="week"
           onSelectEvent={(e) => { 
             setSelectedApp(e.candidate); 
             setSelectedEventId(e.id); 
+            setActiveEventDate(e.rawDate); // <--- Capture raw timestamp for matching
             setIsManagementMode(true); 
             setStep(2); 
             setShowModal(true); 
+            setFormDate(format(e.start, 'yyyy-MM-dd'));
+            setFormTime(format(e.start, 'HH:mm'));
           }}
           onSelectSlot={({start}) => { 
             setIsManagementMode(false); 
@@ -191,18 +208,15 @@ export default function CalendarView() {
         />
       </div>
 
-      {/* Modal with Scrollable Body & Fixed Action Footer */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-xl rounded-[3rem] border-8 border-slate-900 shadow-[20px_20px_0px_0px_rgba(0,0,0,1)] flex flex-col max-h-[85vh] overflow-hidden">
             
-            {/* Header */}
             <div className={`p-8 text-white flex justify-between items-center shrink-0 ${isManagementMode ? 'bg-blue-600' : 'bg-slate-900'}`}>
               <h3 className="text-3xl font-black italic uppercase tracking-tighter">{isManagementMode ? 'Edit' : 'Step ' + step}</h3>
               <button onClick={() => setShowModal(false)} className="text-2xl font-black hover:scale-110">✕</button>
             </div>
 
-            {/* Scrollable Content */}
             <div className="p-8 space-y-6 overflow-y-auto no-scrollbar flex-grow bg-slate-50/50">
               {step === 1 ? (
                 <div className="space-y-4">
@@ -213,7 +227,7 @@ export default function CalendarView() {
                     {applicants
                       .filter(a => a.name.toLowerCase().includes(searchCandidate.toLowerCase()))
                       .map(app => (
-                        <button key={app.id} onClick={() => { setSelectedApp(app); setStep(2); }} className="w-full text-left p-5 bg-white hover:bg-blue-50 rounded-2xl border-4 border-slate-900 flex justify-between items-center transition-all group">
+                        <button key={app.id} onClick={() => { setSelectedApp(app); setStep(2); }} className="w-full text-left p-5 bg-white hover:bg-blue-50 rounded-2xl border-4 border-slate-900 flex justify-between items-center transition-all group shadow-sm hover:shadow-md">
                           <div>
                             <div className="font-black text-slate-900 text-lg uppercase italic leading-none">{app.name}</div>
                             <div className="text-[10px] font-black text-slate-400 uppercase mt-1">{app.job_role}</div>
@@ -231,16 +245,22 @@ export default function CalendarView() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
-                    <input type="date" className="p-4 border-4 border-slate-900 rounded-2xl font-black text-xs" value={formDate} onChange={e => setFormDate(e.target.value)} />
-                    <input type="time" className="p-4 border-4 border-slate-900 rounded-2xl font-black text-xs" value={formTime} onChange={e => setFormTime(e.target.value)} />
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black uppercase text-slate-400 ml-2 italic">Date</label>
+                      <input type="date" className="w-full p-4 border-4 border-slate-900 rounded-2xl font-black text-xs outline-none" value={formDate} onChange={e => setFormDate(e.target.value)} />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black uppercase text-slate-400 ml-2 italic">Time</label>
+                      <input type="time" className="w-full p-4 border-4 border-slate-900 rounded-2xl font-black text-xs outline-none" value={formTime} onChange={e => setFormTime(e.target.value)} />
+                    </div>
                   </div>
 
                   <div className="space-y-3">
-                    <label className="text-[10px] font-black uppercase text-slate-400 ml-2 italic tracking-widest">Internal Guest List (Team Only)</label>
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-2 italic tracking-widest">Internal Guest List</label>
                     <div className="flex flex-wrap gap-2">
                       {teamMembers.map(member => (
                         <button key={member.email} onClick={() => toggleGuest(member.email)}
-                          className={`px-4 py-2 rounded-xl border-4 font-black text-[10px] uppercase transition-all ${selectedGuests.includes(member.email) ? 'bg-slate-900 text-white border-slate-900 scale-105' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-900'}`}
+                          className={`px-4 py-2 rounded-xl border-4 font-black text-[10px] uppercase transition-all ${selectedGuests.includes(member.email) ? 'bg-slate-900 text-white border-slate-900 scale-105 shadow-md' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-900'}`}
                         >
                           {member.name}
                         </button>
@@ -248,21 +268,19 @@ export default function CalendarView() {
                     </div>
                   </div>
 
-                  {/* BOTTOM ACTION BUTTONS */}
                   <div className="flex flex-col gap-3 pt-6 border-t-4 border-slate-100">
                     <button onClick={handleSave} disabled={isSyncing} className="w-full py-5 bg-blue-600 text-white rounded-2xl border-4 border-slate-900 font-black text-sm uppercase shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:bg-slate-900 transition-all">
-                      {isSyncing ? 'Syncing...' : 'Confirm & Sync'}
+                      {isSyncing ? 'Processing...' : 'Confirm & Sync'}
                     </button>
                     
-                    {/* RESTORED: Delete button only in management mode */}
                     {isManagementMode && (
-                      <button onClick={confirmDelete} className="w-full py-4 bg-rose-50 text-rose-600 rounded-2xl border-2 border-rose-200 font-black text-[10px] uppercase tracking-widest hover:bg-rose-600 hover:text-white transition-all">
+                      <button onClick={confirmDelete} className="w-full py-4 bg-rose-50 text-rose-600 rounded-2xl border-4 border-rose-600 font-black text-[10px] uppercase tracking-widest hover:bg-rose-600 hover:text-white transition-all">
                         Delete Schedule
                       </button>
                     )}
                     
-                    <button onClick={() => setStep(1)} className="w-full py-3 text-slate-400 font-black text-[10px] uppercase tracking-widest hover:underline">
-                      ← Back to List
+                    <button onClick={() => { setShowModal(false); resetForm(); }} className="w-full py-3 text-slate-400 font-black text-[10px] uppercase tracking-widest hover:underline text-center">
+                      Cancel
                     </button>
                   </div>
                 </div>
