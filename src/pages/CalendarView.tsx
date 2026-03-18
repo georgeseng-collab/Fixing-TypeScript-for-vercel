@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useEffect, useState } from 'react';
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
-import { format, parse, startOfWeek, getDay } from 'date-fns';
+import { format, parse, startOfWeek, getDay, addHours } from 'date-fns';
 import { enUS } from 'date-fns/locale';
 import { supabase } from '../db';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
@@ -9,18 +9,12 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 const locales = { 'en-US': enUS };
 const localizer = dateFnsLocalizer({ format, parse, startOfWeek, getDay, locales });
 
-const CustomEvent = ({ event }) => (
-  <div className="p-1 flex flex-col h-full leading-tight">
-    <div className="text-[8px] uppercase font-black opacity-70">{event.type}</div>
-    <div className="text-[10px] font-black truncate">{event.candidateName}</div>
-    <div className="text-[8px] font-bold opacity-60 truncate">{event.jobRole}</div>
-  </div>
-);
-
 export default function CalendarView() {
   const [events, setEvents] = useState([]);
   const [applicants, setApplicants] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [selectedSlot, setSelectedSlot] = useState(null);
 
   const fetchData = async () => {
     const { data } = await supabase.from('applicants').select('*');
@@ -30,16 +24,13 @@ export default function CalendarView() {
       if (app.status_history) {
         app.status_history.forEach((h, idx) => {
           if (h.status === 'Interviewing' || h.status === 'Hired') {
-            const start = new Date(h.date);
             calendarEvents.push({
               id: `${app.id}-${idx}`,
-              candidateId: app.id,
-              historyIndex: idx,
+              candidate: app,
               type: h.status,
-              candidateName: app.name,
-              jobRole: app.job_role,
-              start: start,
-              end: new Date(start.getTime() + (60 * 60 * 1000)),
+              start: new Date(h.date),
+              end: addHours(new Date(h.date), 1),
+              title: `${h.status}: ${app.name}`
             });
           }
         });
@@ -51,70 +42,98 @@ export default function CalendarView() {
 
   useEffect(() => { fetchData(); }, []);
 
-  const handleSchedule = async () => {
-    const activeApps = applicants.filter(a => !['Quit', 'Blacklisted', 'Failed Interview'].includes(a.status));
-    const selection = window.prompt("Type Candidate Name to Schedule:\n" + activeApps.map(a => `- ${a.name}`).join('\n'));
-    const app = activeApps.find(a => a.name.toLowerCase() === selection?.toLowerCase());
-    
-    if (!app) return alert("Candidate not found.");
-
-    const dateIn = window.prompt(`Date (YYYY-MM-DD):`, new Date().toLocaleDateString('en-CA'));
-    const timeIn = window.prompt(`Time (24h HH:MM):`, "10:00");
-    
-    if (dateIn && timeIn) {
-      const timestamp = `${dateIn}T${timeIn}:00+08:00`;
-      const newHistory = [...(app.status_history || []), { status: 'Interviewing', date: timestamp }];
-      
-      await supabase.from('applicants').update({ 
-        status: 'Interviewing', 
-        status_history: newHistory 
-      }).eq('id', app.id);
-      
-      const gDate = dateIn.replace(/-/g, '');
-      const gTime = timeIn.replace(/:/g, '');
-      window.open(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=INTERVIEW: ${encodeURIComponent(app.name)}&dates=${gDate}T${gTime}00/${gDate}T${(parseInt(timeIn)+1).toString().padStart(2,'0')}${timeIn.split(':')[1]}00&ctz=Asia/Singapore`, '_blank');
-      
-      fetchData();
-    }
+  // 1. CLICK & DRAG TO SELECT TIME
+  const handleSelectSlot = ({ start }) => {
+    setSelectedSlot(start);
+    setShowModal(true);
   };
 
-  const handleDelete = async (event) => {
-    if (window.confirm(`Delete Interview for ${event.candidateName}?`)) {
-      const app = applicants.find(a => a.id === event.candidateId);
-      const updatedHistory = [...app.status_history];
-      updatedHistory.splice(event.historyIndex, 1);
-      await supabase.from('applicants').update({ status_history: updatedHistory }).eq('id', event.candidateId);
-      fetchData();
-    }
+  const confirmSchedule = async (app) => {
+    const timeStr = format(selectedSlot, "yyyy-MM-dd'T'HH:mm:00+08:00");
+    const newHistory = [...(app.status_history || []), { status: 'Interviewing', date: timeStr }];
+    
+    // Update Database
+    await supabase.from('applicants').update({ 
+      status: 'Interviewing', 
+      status_history: newHistory 
+    }).eq('id', app.id);
+
+    // 2. GOOGLE CALENDAR + RESUME UPLOAD (Via URL)
+    const gStart = format(selectedSlot, "yyyyMMdd'T'HHmmss");
+    const gEnd = format(addHours(selectedSlot, 1), "yyyyMMdd'T'HHmmss");
+    const resumeUrl = app.resume_metadata?.url || 'No resume attached';
+    
+    const details = encodeURIComponent(
+      `Candidate: ${app.name}\nRole: ${app.job_role}\nEmail: ${app.email}\nPhone: ${app.phone}\n\n📄 RESUME LINK: ${resumeUrl}`
+    );
+
+    const gCalUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=Interview: ${encodeURIComponent(app.name)}&dates=${gStart}/${gEnd}&details=${details}&ctz=Asia/Singapore`;
+    
+    window.open(gCalUrl, '_blank');
+    setShowModal(false);
+    fetchData();
   };
 
-  if (loading) return <div className="h-screen flex items-center justify-center font-black text-slate-200 text-3xl italic animate-pulse">LOADING...</div>;
+  if (loading) return <div className="h-screen flex items-center justify-center font-black text-slate-300 text-4xl animate-pulse">GENIEBOOK CALENDAR</div>;
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-10 space-y-8 pb-24">
-      <div className="bg-white p-10 rounded-[3rem] shadow-xl border border-slate-50 flex justify-between items-center">
-        <h1 className="text-4xl font-black text-slate-900 tracking-tighter italic font-serif">GenieBook Scheduler</h1>
-        <button 
-          onClick={handleSchedule}
-          className="bg-blue-600 text-white px-10 py-5 rounded-[2rem] font-black text-xs uppercase tracking-widest shadow-2xl hover:bg-blue-700 transition-all flex items-center gap-3"
-        >
-          <span className="text-xl">📅</span> New Schedule
+    <div className="max-w-7xl mx-auto px-6 py-10 relative">
+      <div className="bg-white p-8 rounded-[3rem] shadow-xl border border-slate-50 flex justify-between items-center mb-8">
+        <div>
+          <h1 className="text-4xl font-black text-slate-900 tracking-tighter italic">Scheduler</h1>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Select a time slot on the grid to book</p>
+        </div>
+        <button onClick={() => { setSelectedSlot(new Date()); setShowModal(true); }} className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg hover:scale-105 transition-all">
+          Quick Schedule
         </button>
       </div>
 
-      <div className="bg-white p-6 rounded-[4rem] shadow-2xl border border-slate-50" style={{ height: '750px' }}>
+      <div className="bg-white p-6 rounded-[3rem] shadow-2xl border border-slate-50" style={{ height: '800px' }}>
         <Calendar 
           localizer={localizer} 
           events={events} 
+          selectable 
+          onSelectSlot={handleSelectSlot}
           startAccessor="start" 
           endAccessor="end" 
-          onSelectEvent={handleDelete}
-          components={{ event: CustomEvent }}
+          defaultView="week"
           eventPropGetter={(event) => ({
-            style: { backgroundColor: event.type === 'Hired' ? '#10b981' : '#3b82f6', borderRadius: '12px', border: 'none' }
+            style: { backgroundColor: event.type === 'Hired' ? '#059669' : '#2563eb', borderRadius: '10px', border: 'none', fontSize: '11px', fontWeight: 'bold' }
           })}
         />
       </div>
+
+      {/* 3. MODERN SELECTION MODAL */}
+      {showModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
+          <div className="bg-white w-full max-w-md rounded-[3rem] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="p-8 bg-slate-900 text-white flex justify-between items-center">
+              <div>
+                <h3 className="text-xl font-black">Select Candidate</h3>
+                <p className="text-[10px] opacity-60 uppercase font-bold mt-1">
+                  Time: {format(selectedSlot, 'PPp')}
+                </p>
+              </div>
+              <button onClick={() => setShowModal(false)} className="text-2xl opacity-50 hover:opacity-100">✕</button>
+            </div>
+            <div className="p-4 max-h-[400px] overflow-y-auto no-scrollbar">
+              {applicants.filter(a => !['Blacklisted', 'Failed Interview'].includes(a.status)).map(app => (
+                <button 
+                  key={app.id}
+                  onClick={() => confirmSchedule(app)}
+                  className="w-full text-left p-5 hover:bg-blue-50 rounded-[1.5rem] border border-transparent hover:border-blue-100 transition-all group flex items-center justify-between"
+                >
+                  <div>
+                    <div className="font-black text-slate-800 group-hover:text-blue-600 transition-colors">{app.name}</div>
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{app.job_role}</div>
+                  </div>
+                  <span className="text-xl opacity-0 group-hover:opacity-100 transition-all">📅</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
