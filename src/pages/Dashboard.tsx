@@ -50,14 +50,15 @@ export default function Dashboard() {
   };
 
   const updateStatus = async (id, status, remarks, date) => {
-    const { data: current } = await supabase.from('applicants').select('status_history').eq('id', id).single();
     const historyEntry = { 
       status, 
       date: new Date().toISOString(), 
       remarks: remarks || null, 
       leaving_date: date || null 
     };
-    const updatedHistory = [...(current.status_history || []), historyEntry];
+
+    const { data: current } = await supabase.from('applicants').select('status_history').eq('id', id).single();
+    const updatedHistory = [...(current?.status_history || []), historyEntry];
 
     await supabase.from('applicants').update({ 
       status, 
@@ -106,7 +107,7 @@ export default function Dashboard() {
   return (
     <div className="max-w-7xl mx-auto px-6 py-12 space-y-8 pb-32 relative">
       
-      {/* MODAL INTERFACE */}
+      {/* INTERNAL INTERFACE MODAL */}
       {showModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/80 backdrop-blur-md p-4">
           <div className="bg-white border-8 border-slate-900 w-full max-w-lg rounded-[3rem] shadow-[20px_20px_0px_0px_rgba(0,0,0,1)] p-10 space-y-6">
@@ -128,9 +129,9 @@ export default function Dashboard() {
                   placeholder="Type details here..." value={formData.remarks} onChange={e => setFormData({...formData, remarks: e.target.value})} />
               </div>
             </div>
-            <div className="flex gap-4">
+            <div className="flex gap-4 pt-4">
               <button onClick={() => setShowModal(false)} className="flex-1 py-5 border-4 border-slate-900 rounded-2xl font-black uppercase text-xs">Cancel</button>
-              <button onClick={() => updateStatus(activeApp.id, formData.status, formData.remarks, formData.date)} className="flex-1 py-5 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs shadow-[4px_4px_0px_0px_rgba(59,130,246,1)]">Confirm Update</button>
+              <button onClick={() => updateStatus(activeApp.id, formData.status, formData.remarks, formData.date)} className="flex-1 py-5 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs shadow-[4px_4px_0px_0px_rgba(59,130,246,1)]">Confirm</button>
             </div>
           </div>
         </div>
@@ -167,7 +168,7 @@ export default function Dashboard() {
               </div>
 
               <div className="p-10 space-y-6 flex-grow">
-                {/* Contact Info (Names, Phone, Email - Always visible even in Archive) */}
+                {/* Contact Info (Always visible) */}
                 <div className="space-y-3">
                   <div className="flex items-center gap-4 bg-slate-50 p-5 rounded-[1.5rem] text-[11px] font-black text-slate-600 border-2 border-slate-900 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] uppercase truncate">
                     <span>📧</span> {app.email}
@@ -194,10 +195,10 @@ export default function Dashboard() {
                     </div>
                   </div>
                 ) : (
-                  <>
-                    {/* STANDARD VIEW TRACKERS & ACTIONS */}
+                  <div className="space-y-6">
+                    {/* STANDARD VIEW TRACKERS */}
                     {(app.status === 'Offered' || app.status === 'Offer Accepted') && (
-                      <div className="bg-slate-50 p-6 rounded-[2.5rem] border-2 border-slate-900 space-y-3">
+                      <div className="bg-slate-50 p-6 rounded-[2.5rem] border-2 border-slate-900 space-y-3 shadow-inner">
                          <div className="flex justify-between text-[10px] font-black uppercase italic">
                            <span>Offer Hub</span>
                            <span className={offerHistory.includes(app.id) ? "text-emerald-600" : "text-slate-300"}>{offerHistory.includes(app.id) ? "● SENT" : "○ PENDING"}</span>
@@ -218,7 +219,7 @@ export default function Dashboard() {
                             <option value="Hired">Hired</option>
                             <option value="Offer Accepted">Offer Accepted (Move Back)</option>
                             <option value="Resigned">Resigned</option>
-                          </optgroup>
+                          </>
                         ) : (
                           <>
                             {stages.map(s => <option key={s} value={s}>{s}</option>)}
@@ -231,10 +232,9 @@ export default function Dashboard() {
                         )}
                       </select>
                     )}
-                  </>
+                  </div>
                 )}
 
-                {/* Footer Buttons (Always Refresh) */}
                 <div className="flex gap-2">
                   <a href={app.resume_metadata?.url} target="_blank" className="flex-1 text-center bg-white border-4 border-slate-900 py-4 rounded-[1.5rem] font-black text-[10px] uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-slate-900 hover:text-white transition-all">Resume</a>
                   <button onClick={() => fetchData()} className="p-4 bg-slate-50 rounded-[1.5rem] border-4 border-slate-900 font-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">↻</button>
