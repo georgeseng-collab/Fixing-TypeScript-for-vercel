@@ -63,7 +63,6 @@ export default function ApprovalHub() {
     setSelectedId(id);
     const app = applicants.find(a => a.id === id);
     if (app) {
-      // Sync Proposed with Dashboard 'offered_salary', or fallback to expected
       setDetails(prev => ({
         ...prev, 
         proposedSal: app.offered_salary || app.salary_expectation || app.expected_salary || 0 
@@ -85,12 +84,15 @@ export default function ApprovalHub() {
   const selectedApp = applicants.find(a => a.id === selectedId);
   const currentSchedule = schedules[details.scheduleKey] || schedules["Sales (Fixed)"];
 
-  const n = (val) => Number(val) || 0;
+  const n = (val) => {
+    if (!val) return 0;
+    const num = Number(String(val).replace(/[^0-9.]/g, ''));
+    return isNaN(num) ? 0 : num;
+  };
   
-  // Logic from applicant form submit fields
-  const currentSal = n(selectedApp?.current_salary || selectedApp?.last_drawn_salary || 0);
-  const expectedSal = n(selectedApp?.salary_expectation || selectedApp?.expected_salary || 0);
-  
+  // SYNC WITH FORM SUBMISSION KEYS
+  const currentSal = n(selectedApp?.current_salary || selectedApp?.last_drawn_salary || selectedApp?.last_drawn || 0);
+  const expectedSal = n(selectedApp?.salary_expectation || selectedApp?.expected_salary || selectedApp?.expectation || 0);
   const proposedSal = n(details.proposedSal);
   const proposedAllow = n(details.proposedAllowance);
   const months = n(details.monthsPaid);
@@ -135,6 +137,7 @@ export default function ApprovalHub() {
 
   return (
     <div className="max-w-[1600px] mx-auto px-8 py-10 pb-40 text-slate-900 font-sans">
+      {/* HEADER */}
       <div className="flex justify-between items-end mb-12 border-b-[10px] border-slate-900 pb-10">
         <div>
           <h1 className="text-7xl font-black uppercase italic tracking-tighter text-slate-900 leading-none">Approval Hub</h1>
@@ -166,41 +169,15 @@ export default function ApprovalHub() {
                 <label className="text-[9px] font-black uppercase text-slate-400 italic block mb-2 tracking-widest">CC Additional Team</label>
                 <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto no-scrollbar">
                   {teamMembers.map(m => (
-                    <button key={m.email} onClick={() => toggleCC(m.email)}
-                      className={`px-3 py-2 rounded-xl border-2 text-[9px] font-black uppercase transition-all ${selectedCC.includes(m.email) ? 'bg-slate-900 text-white border-slate-900 shadow-md' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-900'}`}
-                    >
-                      {m.name}
-                    </button>
+                    <button key={m.email} onClick={() => toggleCC(m.email)} className={`px-3 py-2 rounded-xl border-2 text-[9px] font-black uppercase transition-all ${selectedCC.includes(m.email) ? 'bg-slate-900 text-white border-slate-900 shadow-md' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-900'}`}>{m.name}</button>
                   ))}
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className={labelClass}>Dept</label>
-                  <select className={selectClass} value={details.department} onChange={e => setDetails({...details, department: e.target.value})}>
-                    {departments.map(d => <option key={d} value={d}>{d}</option>)}
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className={labelClass}>Source</label>
-                  <select className={selectClass} value={details.source} onChange={e => setDetails({...details, source: e.target.value})}>
-                    {sources.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              {details.source === 'Referral' && (
-                <div className="space-y-1">
-                  <label className={labelClass}>Referred By</label>
-                  <input className={inputClass} placeholder="Referrer Name" value={details.referralName} onChange={e => setDetails({...details, referralName: e.target.value})} />
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
                   <label className={labelClass}>Proposed Sal</label>
-                  <input className={inputClass} type="number" value={details.proposedSal} onChange={e => setDetails({...details, proposedSal: e.target.value})} />
+                  <input className={`${inputClass} bg-blue-50 text-blue-600`} type="number" value={details.proposedSal} onChange={e => setDetails({...details, proposedSal: e.target.value})} />
                 </div>
                 <div className="space-y-1">
                   <label className={labelClass}>Join Date</label>
@@ -213,6 +190,17 @@ export default function ApprovalHub() {
                 <select className={selectClass} value={details.scheduleKey} onChange={e => setDetails({...details, scheduleKey: e.target.value})}>
                   {Object.keys(schedules).map(k => <option key={k} value={k}>{k}</option>)}
                 </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className={labelClass}>Dept</label>
+                  <select className={selectClass} value={details.department} onChange={e => setDetails({...details, department: e.target.value})}>{departments.map(d => <option key={d} value={d}>{d}</option>)}</select>
+                </div>
+                <div className="space-y-1">
+                  <label className={labelClass}>Source</label>
+                  <select className={selectClass} value={details.source} onChange={e => setDetails({...details, source: e.target.value})}>{sources.map(s => <option key={s} value={s}>{s}</option>)}</select>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -233,14 +221,11 @@ export default function ApprovalHub() {
           </div>
 
           <div className="bg-slate-900 rounded-[3rem] p-10 text-white min-h-[300px]">
-             <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-400 mb-6 flex items-center gap-2">History Log</h3>
+             <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-400 mb-6 italic underline">History Log</h3>
              <div className="space-y-3 max-h-[400px] overflow-y-auto no-scrollbar pr-2">
                {history.map(h => (
                  <div key={h.id} className="group bg-slate-800/50 p-5 rounded-2xl flex justify-between items-center border border-transparent hover:border-slate-700 transition-all">
-                   <div>
-                     <p className="font-black text-[11px] uppercase tracking-tight">{h.applicant_name}</p>
-                     <p className="text-[9px] font-bold text-slate-500 mt-1">${h.salary} • {new Date(h.sent_at).toLocaleDateString()}</p>
-                   </div>
+                   <div><p className="font-black text-[11px] uppercase tracking-tight">{h.applicant_name}</p><p className="text-[9px] font-bold text-slate-500 mt-1">${h.salary} • {new Date(h.sent_at).toLocaleDateString()}</p></div>
                    <button onClick={() => deleteHistory(h.id)} className="opacity-0 group-hover:opacity-100 p-2 text-red-500">✕</button>
                  </div>
                ))}
@@ -248,7 +233,6 @@ export default function ApprovalHub() {
           </div>
         </div>
 
-        {/* PREVIEW CONTAINER - FULL 322 LINE LOGIC RESTORED */}
         <div className="lg:col-span-8 bg-white p-20 rounded-[5rem] shadow-2xl border border-slate-100 min-h-[900px]">
           <div id="approval-content" style={{ color: '#000', fontFamily: 'Arial, sans-serif', fontSize: '15px', lineHeight: '1.2' }}>
             <p>Hi {recipients[boss].name},</p>
@@ -261,12 +245,7 @@ export default function ApprovalHub() {
             <br />
             <p style={{ margin: '0' }}><strong>Working Hours</strong></p>
             <p style={{ margin: '0' }}>Working Days : {currentSchedule.days}</p>
-            <br />
-            <div style={{ paddingLeft: '0px' }}>
-              {currentSchedule.hours.split('\n').map((line, i) => <p key={i} style={{ margin: '0' }}>{line}</p>)}
-            </div>
-            <br />
-            <p><i>You may be required to work outside your stated working hours when the need arises.</i></p>
+            <div style={{ paddingLeft: '0px' }}>{currentSchedule.hours.split('\n').map((line, i) => <p key={i} style={{ margin: '0' }}>{line}</p>)}</div>
             <br />
             <p style={{ margin: '0' }}>Join Date: {details.joinDate}</p>
             <p style={{ margin: '0' }}>Probation Period: {details.probation}</p>
@@ -275,62 +254,15 @@ export default function ApprovalHub() {
             <br />
             <table style={{ borderCollapse: 'collapse', width: '100%', border: '1px solid #000' }}>
               <tbody>
-                <tr style={{ backgroundColor: '#D9E2F3', fontWeight: 'bold' }}>
-                  <td style={{ border: '1px solid #000', padding: '10px', width: '35%' }}>Job Department</td>
-                  <td colSpan="4" style={{ border: '1px solid #000', padding: '10px', backgroundColor: '#fff' }}>{details.department}</td>
-                </tr>
-                <tr style={{ backgroundColor: '#D9E2F3', fontWeight: 'bold' }}>
-                  <td style={{ border: '1px solid #000', padding: '10px' }}>Job Title</td>
-                  <td colSpan="4" style={{ border: '1px solid #000', padding: '10px', backgroundColor: '#fff' }}>{selectedApp?.job_role || '---'}</td>
-                </tr>
-                <tr style={{ backgroundColor: '#D9E2F3', fontWeight: 'bold' }}>
-                  <td style={{ border: '1px solid #000', padding: '10px' }}>Reporting To</td>
-                  <td colSpan="4" style={{ border: '1px solid #000', padding: '10px', backgroundColor: '#fff' }}>{details.manager}</td>
-                </tr>
-                
-                <tr style={{ backgroundColor: '#D9E2F3', fontWeight: 'bold', textAlign: 'center' }}>
-                  <td style={{ border: '1px solid #000', padding: '10px' }}></td>
-                  <td style={{ border: '1px solid #000', padding: '10px' }}>Current (Last Drawn)</td>
-                  <td style={{ border: '1px solid #000', padding: '10px' }}>Expected</td>
-                  <td style={{ border: '1px solid #000', padding: '10px' }}>Proposed (Offered)</td>
-                  <td style={{ border: '1px solid #000', padding: '10px' }}>Inc %</td>
-                </tr>
-
-                <tr>
-                  <td style={{ border: '1px solid #000', padding: '10px' }}>Monthly Basic Salary</td>
-                  <td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>${currentSal.toLocaleString()}</td>
-                  <td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>${expectedSal.toLocaleString()}</td>
-                  <td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>${proposedSal.toLocaleString()}</td>
-                  <td style={{ border: '1px solid #000', padding: '10px', textAlign: 'center' }}>{calcInc(currentSal, proposedSal)}</td>
-                </tr>
-                <tr>
-                  <td style={{ border: '1px solid #000', padding: '10px' }}>Monthly Fixed Allowance</td>
-                  <td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>$0</td>
-                  <td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>$0</td>
-                  <td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>${proposedAllow.toLocaleString()}</td>
-                  <td style={{ border: '1px solid #000', padding: '10px' }}></td>
-                </tr>
-                <tr>
-                  <td style={{ border: '1px solid #000', padding: '10px' }}>Months Paid</td>
-                  <td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>12</td>
-                  <td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>12</td>
-                  <td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>{months}</td>
-                  <td style={{ border: '1px solid #000', padding: '10px' }}></td>
-                </tr>
-                <tr style={{ backgroundColor: '#D9E2F3', fontWeight: 'bold' }}>
-                  <td style={{ border: '1px solid #000', padding: '10px', textAlign: 'center' }}>Annual Guaranteed Cash</td>
-                  <td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>${currAnnual.toLocaleString()}</td>
-                  <td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>${expAnnual.toLocaleString()}</td>
-                  <td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>${propAnnual.toLocaleString()}</td>
-                  <td style={{ border: '1px solid #000', padding: '10px', textAlign: 'center' }}>{calcInc(currAnnual, propAnnual)}</td>
-                </tr>
-                <tr style={{ backgroundColor: '#E2EFDA', fontWeight: 'bold' }}>
-                  <td style={{ border: '1px solid #000', padding: '10px' }}>Total Compensation Package</td>
-                  <td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>${currAnnual.toLocaleString()}</td>
-                  <td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>${expAnnual.toLocaleString()}</td>
-                  <td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>${propAnnual.toLocaleString()}</td>
-                  <td style={{ border: '1px solid #000', padding: '10px', textAlign: 'center' }}>N.A</td>
-                </tr>
+                <tr style={{ backgroundColor: '#D9E2F3', fontWeight: 'bold' }}><td style={{ border: '1px solid #000', padding: '10px', width: '35%' }}>Job Department</td><td colSpan="4" style={{ border: '1px solid #000', padding: '10px', backgroundColor: '#fff' }}>{details.department}</td></tr>
+                <tr style={{ backgroundColor: '#D9E2F3', fontWeight: 'bold' }}><td style={{ border: '1px solid #000', padding: '10px' }}>Job Title</td><td colSpan="4" style={{ border: '1px solid #000', padding: '10px', backgroundColor: '#fff' }}>{selectedApp?.job_role || '---'}</td></tr>
+                <tr style={{ backgroundColor: '#D9E2F3', fontWeight: 'bold' }}><td style={{ border: '1px solid #000', padding: '10px' }}>Reporting To</td><td colSpan="4" style={{ border: '1px solid #000', padding: '10px', backgroundColor: '#fff' }}>{details.manager}</td></tr>
+                <tr style={{ backgroundColor: '#D9E2F3', fontWeight: 'bold', textAlign: 'center' }}><td style={{ border: '1px solid #000', padding: '10px' }}></td><td style={{ border: '1px solid #000', padding: '10px' }}>Current (Last Drawn)</td><td style={{ border: '1px solid #000', padding: '10px' }}>Expected</td><td style={{ border: '1px solid #000', padding: '10px' }}>Proposed (Offered)</td><td style={{ border: '1px solid #000', padding: '10px' }}>Inc %</td></tr>
+                <tr><td style={{ border: '1px solid #000', padding: '10px' }}>Monthly Basic Salary</td><td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>${currentSal.toLocaleString()}</td><td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>${expectedSal.toLocaleString()}</td><td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>${proposedSal.toLocaleString()}</td><td style={{ border: '1px solid #000', padding: '10px', textAlign: 'center' }}>{calcInc(currentSal, proposedSal)}</td></tr>
+                <tr><td style={{ border: '1px solid #000', padding: '10px' }}>Monthly Fixed Allowance</td><td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>$0</td><td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>$0</td><td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>${proposedAllow.toLocaleString()}</td><td style={{ border: '1px solid #000', padding: '10px' }}></td></tr>
+                <tr><td style={{ border: '1px solid #000', padding: '10px' }}>Months Paid</td><td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>12</td><td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>12</td><td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>{months}</td><td style={{ border: '1px solid #000', padding: '10px' }}></td></tr>
+                <tr style={{ backgroundColor: '#D9E2F3', fontWeight: 'bold' }}><td style={{ border: '1px solid #000', padding: '10px', textAlign: 'center' }}>Annual Guaranteed Cash</td><td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>${currAnnual.toLocaleString()}</td><td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>${expAnnual.toLocaleString()}</td><td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>${propAnnual.toLocaleString()}</td><td style={{ border: '1px solid #000', padding: '10px', textAlign: 'center' }}>{calcInc(currAnnual, propAnnual)}</td></tr>
+                <tr style={{ backgroundColor: '#E2EFDA', fontWeight: 'bold' }}><td style={{ border: '1px solid #000', padding: '10px' }}>Total Compensation Package</td><td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>${currAnnual.toLocaleString()}</td><td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>${expAnnual.toLocaleString()}</td><td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>${propAnnual.toLocaleString()}</td><td style={{ border: '1px solid #000', padding: '10px', textAlign: 'center' }}>N.A</td></tr>
               </tbody>
             </table>
           </div>
