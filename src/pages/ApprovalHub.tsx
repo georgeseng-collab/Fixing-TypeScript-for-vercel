@@ -31,9 +31,6 @@ export default function ApprovalHub() {
     probation: '3 months'
   });
 
-  const sources = ["Fastjobs", "Jobstreet", "Linkedin", "CareerFair", "Others", "Referral"];
-  const departments = ["Sales", "Curriculum", "Customer Success", "Marketing", "Tech", "HR"];
-
   const schedules = {
     "Sales (Fixed)": { days: "3 weekdays + 2 weekends", hours: "Weekdays (Mon - Thurs) : 12.30pm - 8.30pm\nWeekdays (Fri) : 12pm - 9pm\nWeekends (Sat - Sun) : 11am - 9pm" },
     "Curriculum (Teacher 5+1)": { days: "5 Weekdays + 1 Weekend", hours: "Weekdays : 12pm to 9pm\nWeekends : 9am to 6.30pm" },
@@ -59,13 +56,32 @@ export default function ApprovalHub() {
     setHistory(hist || []);
   };
 
+  // --- NEW: RANGE DETECTION LOGIC ---
+  const n = (val) => {
+    if (!val) return 0;
+    const str = String(val).toLowerCase();
+    
+    // If it's a range like "3000 - 4000" or "3k to 4k"
+    if (str.includes('-') || str.includes('to')) {
+      const parts = str.split(/-|to/);
+      // Grab the second part (the higher end of the range)
+      const highEnd = parts[parts.length - 1].replace(/[^0-9.]/g, '');
+      return Number(highEnd) || 0;
+    }
+    
+    // Default: Strip symbols and return number
+    const num = Number(str.replace(/[^0-9.]/g, ''));
+    return isNaN(num) ? 0 : num;
+  };
+
   const handleCandidateChange = (id) => {
     setSelectedId(id);
     const app = applicants.find(a => a.id === id);
     if (app) {
+      // Set proposed to offered_salary (Dashboard) or high-end of expected
       setDetails(prev => ({
         ...prev, 
-        proposedSal: app.offered_salary || app.salary_expectation || app.expected_salary || 0 
+        proposedSal: app.offered_salary || n(app.salary_expectation || app.expected_salary) || 0 
       }));
     }
   };
@@ -84,15 +100,9 @@ export default function ApprovalHub() {
   const selectedApp = applicants.find(a => a.id === selectedId);
   const currentSchedule = schedules[details.scheduleKey] || schedules["Sales (Fixed)"];
 
-  const n = (val) => {
-    if (!val) return 0;
-    const num = Number(String(val).replace(/[^0-9.]/g, ''));
-    return isNaN(num) ? 0 : num;
-  };
-  
-  // SYNC WITH FORM SUBMISSION KEYS
-  const currentSal = n(selectedApp?.current_salary || selectedApp?.last_drawn_salary || selectedApp?.last_drawn || 0);
-  const expectedSal = n(selectedApp?.salary_expectation || selectedApp?.expected_salary || selectedApp?.expectation || 0);
+  // Mapping using the range-aware 'n' function
+  const currentSal = n(selectedApp?.current_salary || selectedApp?.last_drawn_salary || 0);
+  const expectedSal = n(selectedApp?.salary_expectation || selectedApp?.expected_salary || 0);
   const proposedSal = n(details.proposedSal);
   const proposedAllow = n(details.proposedAllowance);
   const months = n(details.monthsPaid);
@@ -137,7 +147,6 @@ export default function ApprovalHub() {
 
   return (
     <div className="max-w-[1600px] mx-auto px-8 py-10 pb-40 text-slate-900 font-sans">
-      {/* HEADER */}
       <div className="flex justify-between items-end mb-12 border-b-[10px] border-slate-900 pb-10">
         <div>
           <h1 className="text-7xl font-black uppercase italic tracking-tighter text-slate-900 leading-none">Approval Hub</h1>
@@ -163,13 +172,18 @@ export default function ApprovalHub() {
                   <option value="">Choose Candidate...</option>
                   {applicants.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
+                {selectedApp && (
+                  <p className="text-[9px] font-black text-slate-400 ml-4 mt-2 italic">
+                    Raw DB Expectation: {selectedApp.salary_expectation || selectedApp.expected_salary}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-1 p-4 bg-slate-50 rounded-3xl border-2 border-slate-100">
                 <label className="text-[9px] font-black uppercase text-slate-400 italic block mb-2 tracking-widest">CC Additional Team</label>
                 <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto no-scrollbar">
                   {teamMembers.map(m => (
-                    <button key={m.email} onClick={() => toggleCC(m.email)} className={`px-3 py-2 rounded-xl border-2 text-[9px] font-black uppercase transition-all ${selectedCC.includes(m.email) ? 'bg-slate-900 text-white border-slate-900 shadow-md' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-900'}`}>{m.name}</button>
+                    <button key={m.email} onClick={() => toggleCC(m.email)} className={`px-3 py-2 rounded-xl border-2 text-[9px] font-black uppercase transition-all ${selectedCC.includes(m.email) ? 'bg-slate-900 text-white border-slate-900 shadow-md' : 'bg-white text-slate-400 border-slate-200'}`}>{m.name}</button>
                   ))}
                 </div>
               </div>
