@@ -82,13 +82,13 @@ export default function Dashboard() {
   return (
     <div className="max-w-7xl mx-auto px-6 py-12 space-y-8 pb-32">
       
-      {/* Header */}
+      {/* Dashboard Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b-8 border-slate-900 pb-8">
         <h1 className="text-6xl font-black text-slate-900 tracking-tighter italic uppercase">Dashboard</h1>
         <input 
           type="text" 
           placeholder="Search name or role..." 
-          className="w-full md:w-80 bg-white px-8 py-5 rounded-[2rem] border-4 border-slate-900 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] font-bold text-sm focus:bg-blue-50 outline-none transition-all"
+          className="w-full md:w-80 bg-white px-8 py-5 rounded-[2rem] border-4 border-slate-900 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] font-bold text-sm outline-none transition-all"
           value={searchTerm}
           onChange={e => setSearchTerm(e.target.value)}
         />
@@ -112,32 +112,35 @@ export default function Dashboard() {
           const canOnboard = hasOfferSent && hasApprovalSent && isContractDone && app.status === 'Offer Accepted';
 
           return (
-            <div key={app.id} className="bg-white rounded-[4rem] border-4 border-slate-900 shadow-[12px_12px_0px_0px_rgba(15,23,42,1)] overflow-hidden flex flex-col transition-all hover:translate-y-[-8px]">
+            <div key={app.id} className="bg-white rounded-[4rem] border-4 border-slate-900 shadow-[10px_10px_0px_0px_rgba(15,23,42,1)] overflow-hidden flex flex-col transition-all hover:translate-y-[-8px]">
               
-              {/* Header */}
-              <div className={`p-10 pb-6 ${getStatusTheme(app.status)} border-b-4 border-slate-900 relative`}>
-                <div className="flex justify-between items-start">
-                  <div className="flex-grow space-y-1">
+              {/* Header - ALIGNMENT FIXED HERE */}
+              <div className={`p-10 pb-6 ${getStatusTheme(app.status)} border-b-4 border-slate-900`}>
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex-grow overflow-hidden">
                     {editId === app.id ? (
-                      <>
-                        <input className="w-full text-xl font-black bg-white/20 rounded-xl px-3 py-1 outline-none text-white mb-2" value={editData.name} onChange={e => setEditData({...editData, name: e.target.value})} />
+                      <div className="space-y-1">
+                        <input className="w-full text-xl font-black bg-white/20 rounded-xl px-3 py-1 outline-none text-white" value={editData.name} onChange={e => setEditData({...editData, name: e.target.value})} />
                         <input className="w-full text-[10px] font-black uppercase bg-white/10 rounded-xl px-3 py-1 outline-none text-white/80" value={editData.job_role} onChange={e => setEditData({...editData, job_role: e.target.value})} />
-                      </>
+                      </div>
                     ) : (
-                      <>
-                        <h2 className="text-3xl font-black tracking-tighter italic uppercase truncate">{app.name}</h2>
+                      <div className="space-y-0.5">
+                        <h2 className="text-3xl font-black tracking-tighter italic uppercase truncate leading-none">{app.name}</h2>
                         <p className="text-[10px] font-black uppercase opacity-70 tracking-[0.2em]">{app.job_role || 'No Role'}</p>
-                      </>
+                      </div>
                     )}
                   </div>
-                  <button onClick={() => editId === app.id ? saveEdit() : (setEditId(app.id), setEditData(app))} className="p-4 bg-white/20 rounded-2xl hover:bg-white/40 transition-all active:scale-90">
+                  <button 
+                    onClick={() => editId === app.id ? saveEdit() : (setEditId(app.id), setEditData(app))} 
+                    className="shrink-0 w-12 h-12 flex items-center justify-center bg-white/20 rounded-2xl hover:bg-white/40 transition-all active:scale-90"
+                  >
                     {editId === app.id ? '✔️' : '✏️'}
                   </button>
                 </div>
               </div>
 
               <div className="p-10 space-y-8 flex-grow">
-                {/* Email & Phone Redirects */}
+                {/* Contact Section */}
                 <div className="space-y-3">
                   <a href={`mailto:${app.email}`} className="flex items-center gap-4 bg-slate-50 p-5 rounded-[1.5rem] text-[11px] font-black text-slate-600 truncate hover:bg-slate-100 border-2 border-slate-900 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] transition-all uppercase tracking-tight">
                     <span className="text-lg">📧</span> {app.email || 'No Email'}
