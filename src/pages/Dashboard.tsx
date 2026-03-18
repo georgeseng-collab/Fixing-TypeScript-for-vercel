@@ -55,7 +55,7 @@ export default function Dashboard() {
   };
 
   const updateStatus = async (id, status, remarks, date) => {
-    const { data: current } = await supabase.from('applicants').select('status_history').eq('id', id).single();
+    const { data: current } = await supabase.from('applicants').select('status_history').eq(id).single();
     const historyEntry = { status, date: new Date().toISOString(), remarks: remarks || null, leaving_date: date || null };
     const updatedHistory = [...(current?.status_history || []), historyEntry];
 
@@ -117,11 +117,11 @@ export default function Dashboard() {
   return (
     <div className="max-w-7xl mx-auto px-6 py-12 space-y-8 pb-32 relative">
       
-      {/* 1. STATUS UPDATE MODAL */}
+      {/* MODAL INTERFACES */}
       {showStatusModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-4">
           <div className="bg-white border-8 border-slate-900 w-full max-w-lg rounded-[3rem] shadow-[20px_20px_0px_0px_rgba(0,0,0,1)] p-10 space-y-6">
-            <h2 className="text-4xl font-black uppercase italic tracking-tighter">Status Change</h2>
+            <h2 className="text-4xl font-black uppercase italic tracking-tighter">Status Update</h2>
             <div className="space-y-4">
               {modalType === 'resigned' && (
                 <div className="space-y-2">
@@ -142,7 +142,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* 2. HISTORY MODAL */}
       {showHistoryModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/95 backdrop-blur-md p-4">
           <div className="bg-slate-900 border-8 border-white/10 w-full max-w-2xl rounded-[4rem] shadow-[30px_30px_60px_rgba(0,0,0,0.5)] p-12 relative overflow-hidden">
@@ -174,7 +173,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Stats Bar */}
+      {/* Clickable Stats Bar */}
       <div className="flex flex-wrap gap-3">
         {Object.entries(stats).map(([label, count]) => (
           <button key={label} onClick={() => setFilterStatus(label)} className={`flex-1 min-w-[140px] p-6 rounded-[2rem] border-4 border-slate-900 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all ${filterStatus === label ? 'bg-slate-900 text-white shadow-none translate-x-1 translate-y-1' : 'bg-white text-slate-900'}`}>
@@ -193,32 +192,46 @@ export default function Dashboard() {
           return (
             <div key={app.id} className="bg-white rounded-[4rem] border-4 border-slate-900 shadow-[14px_14px_0px_0px_rgba(15,23,42,1)] overflow-hidden flex flex-col transition-all">
               
-              {/* Header */}
+              {/* Card Header (Editable) */}
               <div className={`p-10 pb-8 ${getStatusTheme(app.status)} border-b-4 border-slate-900`}>
                   <div className="flex-grow">
                     {editId === app.id ? (
-                      <input className="w-full text-xl font-black bg-white/20 rounded-xl px-3 py-1 outline-none text-white border border-white/40" value={editData.name} onChange={e => setEditData({...editData, name: e.target.value})} />
+                      <div className="space-y-2">
+                        <input className="w-full text-xl font-black bg-white/20 rounded-xl px-3 py-1 outline-none text-white border border-white/40" value={editData.name} onChange={e => setEditData({...editData, name: e.target.value})} placeholder="Full Name" />
+                        <input className="w-full text-[11px] font-black uppercase bg-white/10 rounded-xl px-3 py-1 outline-none text-white/80" value={editData.job_role} onChange={e => setEditData({...editData, job_role: e.target.value})} placeholder="Job Role" />
+                      </div>
                     ) : (
-                      <h2 className="text-3xl font-black tracking-tighter italic uppercase break-words leading-tight mb-1">{app.name}</h2>
+                      <>
+                        <h2 className="text-3xl font-black tracking-tighter italic uppercase break-words leading-tight mb-1">{app.name}</h2>
+                        <p className="text-[11px] font-black uppercase opacity-70 mt-1">{isArchivedView ? `Archive: ${app.status}` : app.job_role}</p>
+                      </>
                     )}
-                    <p className="text-[11px] font-black uppercase opacity-70 mt-1">{isArchivedView ? `Archive: ${app.status}` : app.job_role}</p>
                   </div>
               </div>
 
               <div className="p-10 space-y-8 flex-grow">
-                {/* Contacts */}
+                {/* Contacts (Editable) */}
                 <div className="space-y-3">
-                  <div className="flex items-center gap-4 bg-slate-50 p-5 rounded-[1.5rem] text-[11px] font-black text-slate-600 border-2 border-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] uppercase truncate">
-                    <span>📧</span> {app.email}
-                  </div>
-                  <a href={`https://wa.me/${app.phone?.replace(/[^0-9]/g, '')}`} target="_blank" className="flex items-center gap-4 bg-emerald-50 p-5 rounded-[1.5rem] text-[11px] font-black text-emerald-700 border-2 border-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] uppercase hover:bg-emerald-100 transition-all">
-                    <span>📱</span> {app.phone}
-                  </a>
+                  {editId === app.id ? (
+                    <div className="space-y-2">
+                      <input className="w-full p-4 bg-slate-50 border-2 border-slate-900 rounded-2xl font-bold text-xs" value={editData.email} onChange={e => setEditData({...editData, email: e.target.value})} placeholder="Email Address" />
+                      <input className="w-full p-4 bg-slate-50 border-2 border-slate-900 rounded-2xl font-bold text-xs" value={editData.phone} onChange={e => setEditData({...editData, phone: e.target.value})} placeholder="Phone Number" />
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-4 bg-slate-50 p-5 rounded-[1.5rem] text-[11px] font-black text-slate-600 border-2 border-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] uppercase truncate">
+                        <span>📧</span> {app.email}
+                      </div>
+                      <a href={`https://wa.me/${app.phone?.replace(/[^0-9]/g, '')}`} target="_blank" className="flex items-center gap-4 bg-emerald-50 p-5 rounded-[1.5rem] text-[11px] font-black text-emerald-700 border-2 border-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] uppercase hover:bg-emerald-100 transition-all">
+                        <span>📱</span> {app.phone}
+                      </a>
+                    </>
+                  )}
                 </div>
 
                 {/* ARCHIVE CONTENT */}
                 {isArchivedView ? (
-                  <div className="bg-slate-900 p-8 rounded-[3.5rem] space-y-5 text-white">
+                  <div className="bg-slate-900 p-8 rounded-[3.5rem] space-y-5 text-white shadow-inner">
                     {app.status === 'Resigned' && <div className="space-y-1"><span className="text-[9px] font-black text-blue-400 uppercase italic">Date of Leaving</span><p className="text-sm font-bold text-rose-400 italic">{app.resignation_date || 'N/A'}</p></div>}
                     <div className="space-y-1"><span className="text-[9px] font-black text-blue-400 uppercase italic">Reason / Remarks</span><p className="text-xs italic opacity-80 leading-relaxed font-medium line-clamp-4">"{app.remarks || 'No remarks provided.'}"</p></div>
                   </div>
@@ -255,12 +268,12 @@ export default function Dashboard() {
                   </div>
                 )}
 
-                {/* SALARY INFO */}
+                {/* Salaries (Editable) */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-slate-50 p-5 rounded-[1.5rem] border-2 border-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-center">
                     <span className="block text-[9px] font-black text-slate-400 uppercase mb-1 italic">Last Drawn</span>
                     {editId === app.id ? (
-                      <input className="w-full text-center bg-transparent font-black" value={editData.current_salary} onChange={e => setEditData({...editData, current_salary: e.target.value})} />
+                      <input className="w-full text-center bg-white border-2 border-slate-200 rounded-lg font-black py-1" value={editData.current_salary} onChange={e => setEditData({...editData, current_salary: e.target.value})} />
                     ) : (
                       <span className="text-sm font-black text-slate-900">${app.current_salary || app.last_drawn_salary || '0'}</span>
                     )}
@@ -268,22 +281,26 @@ export default function Dashboard() {
                   <div className="bg-slate-50 p-5 rounded-[1.5rem] border-2 border-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-center">
                     <span className="block text-[9px] font-black text-slate-400 uppercase mb-1 italic text-blue-600">Expected</span>
                     {editId === app.id ? (
-                      <input className="w-full text-center bg-transparent font-black text-blue-600" value={editData.expected_salary} onChange={e => setEditData({...editData, expected_salary: e.target.value})} />
+                      <input className="w-full text-center bg-white border-2 border-slate-200 rounded-lg font-black py-1 text-blue-600" value={editData.expected_salary} onChange={e => setEditData({...editData, expected_salary: e.target.value})} />
                     ) : (
                       <span className="text-sm font-black text-blue-600">${app.expected_salary || app.salary_expectation || '0'}</span>
                     )}
                   </div>
                 </div>
 
-                {/* ACTION ROW (EDIT REPLACES REFRESH) */}
-                <div className="flex gap-3">
-                  <a href={app.resume_metadata?.url} target="_blank" className="flex-1 text-center bg-white border-4 border-slate-900 py-5 rounded-[2rem] font-black text-[11px] uppercase shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:bg-slate-900 hover:text-white transition-all">Resume</a>
-                  <button onClick={() => { setActiveApp(app); setShowHistoryModal(true); }} className="px-8 bg-slate-50 rounded-[2rem] border-4 border-slate-900 font-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:bg-blue-500 hover:text-white transition-all">🕒 Hist</button>
+                {/* BOTTOM ACTION ROW (ICON ONLY) */}
+                <div className="flex gap-4">
+                  <a href={app.resume_metadata?.url} target="_blank" className="flex-1 flex justify-center items-center bg-white border-4 border-slate-900 py-5 rounded-[2rem] shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:bg-slate-900 hover:text-white transition-all text-2xl">
+                    📄
+                  </a>
+                  <button onClick={() => { setActiveApp(app); setShowHistoryModal(true); }} className="flex-1 flex justify-center items-center bg-slate-50 rounded-[2rem] border-4 border-slate-900 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:bg-blue-500 hover:text-white transition-all text-2xl">
+                    🕒
+                  </button>
                   <button 
                     onClick={() => editId === app.id ? saveEdit() : (setEditId(app.id), setEditData(app))}
-                    className={`px-8 rounded-[2rem] border-4 border-slate-900 font-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all ${editId === app.id ? 'bg-emerald-500 text-white animate-pulse' : 'bg-white text-slate-900 hover:bg-slate-900 hover:text-white'}`}
+                    className={`flex-1 flex justify-center items-center rounded-[2rem] border-4 border-slate-900 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all text-2xl ${editId === app.id ? 'bg-emerald-500 text-white animate-pulse' : 'bg-white text-slate-900 hover:bg-slate-900 hover:text-white'}`}
                   >
-                    {editId === app.id ? '✔️ Save' : '✏️ Edit'}
+                    {editId === app.id ? '✔️' : '✏️'}
                   </button>
                 </div>
               </div>
