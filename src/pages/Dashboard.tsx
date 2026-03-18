@@ -31,34 +31,51 @@ export default function Dashboard() {
     return themes[status] || 'border-slate-300 text-slate-600 bg-slate-50';
   };
 
+  const openGoogleCalendar = (app, type = 'INTERVIEW') => {
+    const dateInput = window.prompt(`Date for ${type} (YYYY-MM-DD):`, new Date().toISOString().split('T')[0]);
+    if (!dateInput) return;
+
+    const timeInput = window.prompt(`Start Time (24h format HH:MM):`, "10:00");
+    if (!timeInput) return;
+
+    // Formatting for Google: YYYYMMDDTHHMMSS
+    const cleanDate = dateInput.replace(/-/g, '');
+    const cleanTime = timeInput.replace(/:/g, '');
+    
+    // We explicitly set a start and end time (1 hour duration)
+    const startTime = `${cleanDate}T${cleanTime}00`;
+    
+    // Calculate End Time (+1 hour)
+    let [hours, minutes] = timeInput.split(':').map(Number);
+    let endHours = (hours + 1).toString().padStart(2, '0');
+    const endTime = `${cleanDate}T${endHours}${minutes.toString().padStart(2, '0')}00`;
+
+    const title = encodeURIComponent(`${type}: ${app.name} (${app.job_role})`);
+    const details = encodeURIComponent(`Candidate: ${app.name}\nRole: ${app.job_role}\nEmail: ${app.email}\nPhone: ${app.phone}`);
+    
+    // ctz=Asia/Singapore is the "Magic Bullet" to stop date shifting
+    const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startTime}/${endTime}&details=${details}&ctz=Asia/Singapore`;
+    
+    window.open(url, '_blank');
+  };
+
   const handleStatusChange = async (app, newStatus) => {
     let finalOffer = app.final_offer_salary;
     let onboardingDate = app.onboarding_date;
 
     if (newStatus === 'Offered') {
-      const amount = window.prompt(`Final Offer Salary for ${app.name}:`, app.salary_expectation || "");
-      if (amount === null) return; 
-      finalOffer = amount;
+      const amount = window.prompt(`Final Offer Salary:`, app.salary_expectation || "");
+      if (amount !== null) finalOffer = amount;
+    }
+
+    if (newStatus === 'Interviewing') {
+      const confirm = window.confirm("Book the Interview slot in Google Calendar now?");
+      if (confirm) openGoogleCalendar(app, 'INTERVIEW');
     }
 
     if (newStatus === 'Hired') {
-      const dateInput = window.prompt(`Select Onboarding Date (YYYY-MM-DD):`, new Date().toISOString().split('T')[0]);
-      if (!dateInput) return;
-      onboardingDate = dateInput;
-      
-      // CALENDAR FIX: 
-      // We format as YYYYMMDDTHHmmSS. We set it to 09:00 AM to avoid UTC date-rolling issues.
-      const cleanDate = dateInput.replace(/-/g, '');
-      const startTime = `${cleanDate}T090000`;
-      const endTime = `${cleanDate}T100000`;
-      
-      const gCalTitle = encodeURIComponent(`ONBOARDING: ${app.name}`);
-      const gCalDetails = encodeURIComponent(`Role: ${app.job_role}\nSalary: ${finalOffer}\nEmail: ${app.email}`);
-      
-      // We add ctz=Asia/Singapore to force the correct timezone rendering
-      const gCalUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${gCalTitle}&dates=${startTime}/${endTime}&details=${gCalDetails}&ctz=Asia/Singapore`;
-      
-      window.open(gCalUrl, '_blank');
+      const confirm = window.confirm("Book the Onboarding slot in Google Calendar now?");
+      if (confirm) openGoogleCalendar(app, 'ONBOARDING');
     }
 
     const history = [...(app.status_history || []), { status: newStatus, date: new Date().toISOString() }];
@@ -86,74 +103,66 @@ export default function Dashboard() {
   if (loading) return <div className="flex h-screen items-center justify-center font-black text-slate-300 animate-pulse uppercase tracking-[0.3em]">Geniebook Systems...</div>;
 
   return (
-    <div className="max-w-7xl mx-auto px-6 pb-24 space-y-12">
+    <div className="max-w-7xl mx-auto px-6 pb-24 space-y-10">
       
-      <div className="flex flex-wrap gap-3">
+      {/* 📊 TABS */}
+      <div className="flex flex-wrap gap-2">
         {['All', 'Applied', 'Interviewing', 'Offered', 'Hired', 'Rejected Offer'].map(s => (
-          <button key={s} onClick={() => setFilterStatus(s)} className={`px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all border ${
-            filterStatus === s ? 'bg-slate-900 text-white border-slate-900 shadow-lg' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400'
+          <button key={s} onClick={() => setFilterStatus(s)} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+            filterStatus === s ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-400 border border-slate-100 hover:bg-slate-50'
           }`}>
-            {s === 'Rejected Offer' ? 'Declined' : s} ({s === 'All' ? activePipeline.length : activePipeline.filter(a => a.status === s).length})
+            {s === 'Rejected Offer' ? 'Declined' : s}
           </button>
         ))}
       </div>
 
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
-        <h1 className="text-3xl font-black text-slate-900 italic tracking-tight underline decoration-blue-500 decoration-4 underline-offset-8">Active Pipeline</h1>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <h1 className="text-4xl font-black text-slate-900 tracking-tighter italic">Talent Pipeline</h1>
         <input 
           type="text" 
           placeholder="Search..." 
-          className="bg-slate-50 px-6 py-3 rounded-2xl outline-none border-2 border-transparent focus:border-blue-500 w-full md:w-80 font-bold text-sm"
+          className="bg-white px-6 py-3 rounded-2xl outline-none border border-slate-100 shadow-sm w-full md:w-80 font-bold text-sm"
           onChange={e => setSearchTerm(e.target.value)}
         />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
         {filtered.map(app => (
-          <div key={app.id} className="bg-white rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/50 flex flex-col overflow-hidden transition-transform hover:-translate-y-1">
+          <div key={app.id} className="bg-white rounded-[3rem] border border-slate-100 shadow-xl shadow-slate-200/40 flex flex-col overflow-hidden transition-all hover:shadow-2xl">
             
-            <div className={`p-8 pb-4 border-t-8 ${getStatusTheme(app.status).split(' ')[0]}`}>
+            <div className={`p-8 pb-4 border-t-[12px] ${getStatusTheme(app.status).split(' ')[0]}`}>
               <div className="flex justify-between items-start">
-                <div className="space-y-1 flex-grow pr-4">
+                <div className="flex-grow">
                   {editId === app.id ? (
-                    <input className="w-full text-xl font-black border-b border-blue-400 outline-none" value={editData.name} onChange={e => setEditData({...editData, name: e.target.value})} />
+                    <input className="w-full text-xl font-black border-b-2 border-blue-400 outline-none mb-2" value={editData.name} onChange={e => setEditData({...editData, name: e.target.value})} />
                   ) : (
                     <h2 className="text-2xl font-black text-slate-800 tracking-tight">{app.name}</h2>
                   )}
-                  {editId === app.id ? (
-                    <input className="w-full text-[10px] font-bold text-blue-600 uppercase border-b border-blue-200 outline-none mt-2" value={editData.job_role} onChange={e => setEditData({...editData, job_role: e.target.value})} />
-                  ) : (
-                    <p className="text-[10px] font-black uppercase tracking-[0.15em] text-blue-500">{app.job_role}</p>
-                  )}
+                  <p className="text-[10px] font-black uppercase tracking-widest text-blue-500">{app.job_role}</p>
                 </div>
-                <button onClick={() => editId === app.id ? saveEdit() : (setEditId(app.id), setEditData(app))} className="p-3 bg-slate-50 rounded-2xl hover:bg-blue-50">
+                <button onClick={() => editId === app.id ? saveEdit() : (setEditId(app.id), setEditData(app))} className="p-3 bg-slate-50 rounded-2xl hover:bg-blue-600 hover:text-white transition-all">
                   {editId === app.id ? '💾' : '✏️'}
                 </button>
               </div>
             </div>
 
             <div className="p-8 pt-0 space-y-6 flex-grow">
-              <div className="space-y-3">
-                <div className="text-[9px] font-black text-slate-300 uppercase tracking-widest">Connect</div>
-                {editId === app.id ? (
-                  <div className="space-y-2">
-                    <input className="w-full p-2 text-xs border rounded-xl" value={editData.email} onChange={e => setEditData({...editData, email: e.target.value})} />
-                    <input className="w-full p-2 text-xs border rounded-xl" value={editData.phone} onChange={e => setEditData({...editData, phone: e.target.value})} />
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 gap-2">
-                    <a href={`mailto:${app.email}`} className="flex items-center gap-3 bg-slate-50 p-3 rounded-2xl text-xs font-bold text-slate-600 truncate">
-                      <span>📧</span> {app.email}
-                    </a>
-                    <a href={`https://wa.me/${app.phone?.replace(/[^0-9]/g, '')}`} target="_blank" className="flex items-center gap-3 bg-emerald-50 p-3 rounded-2xl text-xs font-bold text-emerald-700 border border-emerald-100">
-                      <span>📱</span> {app.phone} <span className="ml-auto text-[8px] opacity-60 uppercase font-black">WhatsApp</span>
-                    </a>
-                  </div>
-                )}
+              {/* Actions Hub */}
+              <div className="grid grid-cols-2 gap-2">
+                <a href={`mailto:${app.email}`} className="flex items-center justify-center bg-slate-50 p-3 rounded-2xl text-[10px] font-black text-slate-600 hover:bg-slate-100">EMAIL</a>
+                <a href={`https://wa.me/${app.phone?.replace(/[^0-9]/g, '')}`} target="_blank" className="flex items-center justify-center bg-emerald-50 p-3 rounded-2xl text-[10px] font-black text-emerald-700 hover:bg-emerald-600 hover:text-white transition-all">WHATSAPP</a>
               </div>
 
+              {/* Calendar Quick-Action Button */}
+              <button 
+                onClick={() => openGoogleCalendar(app, 'INTERVIEW')}
+                className="w-full flex items-center justify-center gap-2 py-4 bg-amber-50 border border-amber-200 rounded-3xl text-amber-700 font-black text-[11px] uppercase tracking-widest hover:bg-amber-100 transition-all shadow-sm"
+              >
+                📅 Schedule Interview
+              </button>
+
               <div className="bg-slate-50/80 p-5 rounded-[2rem] border border-slate-100 space-y-4">
-                <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Financials</div>
+                <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Comp Details</div>
                 <div className="flex justify-between text-xs font-bold">
                   <span className="text-slate-400">Last Drawn</span>
                   {editId === app.id ? <input className="w-20 text-right border-b" value={editData.last_drawn_salary} onChange={e => setEditData({...editData, last_drawn_salary: e.target.value})} /> : <span>{app.last_drawn_salary || '—'}</span>}
@@ -184,20 +193,20 @@ export default function Dashboard() {
 
               <div className="flex gap-2">
                 <a href={app.resume_metadata?.url} target="_blank" className="flex-1 text-center bg-slate-900 text-white py-4 rounded-2xl font-black text-[10px] tracking-widest uppercase hover:bg-black transition-all">Resume</a>
-                <button onClick={() => setShowHistoryId(showHistoryId === app.id ? null : app.id)} className="px-6 bg-slate-100 rounded-2xl text-slate-400 font-bold">🕒</button>
+                <button onClick={() => setShowHistoryId(showHistoryId === app.id ? null : app.id)} className="px-6 bg-slate-100 rounded-2xl text-slate-400 font-bold">🕒 Log</button>
               </div>
             </div>
 
             {showHistoryId === app.id && (
               <div className="absolute inset-0 bg-white z-50 p-10 flex flex-col rounded-[2.3rem] shadow-2xl">
                 <div className="flex justify-between items-center mb-10 border-b pb-4">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">History</span>
+                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">History Log</span>
                   <button onClick={() => setShowHistoryId(null)} className="h-10 w-10 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 font-bold">✕</button>
                 </div>
                 <div className="flex-grow overflow-y-auto space-y-8">
                   {app.status_history?.map((h, i) => (
                     <div key={i} className="relative pl-8 border-l-2 border-slate-100">
-                      <div className="absolute -left-[5px] top-1 w-2 h-2 rounded-full bg-blue-500"></div>
+                      <div className="absolute -left-[5px] top-1 w-2 h-2 rounded-full bg-blue-500 ring-4 ring-blue-50"></div>
                       <div className="text-xs font-black uppercase text-slate-800">{h.status}</div>
                       <div className="text-[10px] text-slate-400 font-bold mt-1">{new Date(h.date).toLocaleDateString()}</div>
                     </div>
