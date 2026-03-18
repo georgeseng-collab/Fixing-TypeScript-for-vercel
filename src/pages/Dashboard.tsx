@@ -10,6 +10,10 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('All');
   
+  // Ownership State for Recruiter Tracking
+  const [currentUser, setCurrentUser] = useState(null);
+  const [viewType, setViewType] = useState('All'); 
+
   // Edit State
   const [editId, setEditId] = useState(null);
   const [editData, setEditData] = useState({});
@@ -26,6 +30,11 @@ export default function Dashboard() {
   const fetchData = async () => {
     try {
       setLoading(true);
+      
+      // Get Logged in Recruiter
+      const { data: { user } } = await supabase.auth.getUser();
+      setCurrentUser(user);
+
       const { data: apps } = await supabase.from('applicants').select('*').order('created_at', { ascending: false });
       const { data: offHist } = await supabase.from('offer_history').select('applicant_id');
       const { data: appHist } = await supabase.from('salary_approval_history').select('applicant_id');
@@ -40,19 +49,17 @@ export default function Dashboard() {
 
   const updateStatus = async (id, status, remarks, date, offered_salary, isReset = false) => {
     try {
-      const { data: currentApp } = await supabase.from('applicants').select('status_history, remarks, resignation_date').eq('id', id).single();
+      const { data: currentApp } = await supabase.from('applicants').select('*').eq('id', id).single();
       
       const historyEntry = { 
         status, 
         date: new Date().toISOString(), 
-        remarks: remarks || (isReset ? "Candidate Reset to Applied" : "Status Updated"), 
-        leaving_date: date || null,
+        remarks: remarks || (isReset ? "🔄 Candidate Reset to Pipeline" : "Status Updated"), 
         offered_salary: offered_salary || null 
       };
 
       const updatedHistory = [...(currentApp?.status_history || []), historyEntry];
       
-      // If resetting, we explicitly clear the archive fields (remarks and resignation_date)
       const updatePayload = { 
         status, 
         status_history: updatedHistory,
@@ -98,7 +105,12 @@ export default function Dashboard() {
   };
 
   const saveEdit = async () => {
-    await supabase.from('applicants').update(editData).eq('id', editId);
+    const syncData = {
+      ...editData,
+      current_salary: editData.current_salary || editData.last_drawn_salary,
+      expected_salary: editData.expected_salary || editData.salary_expectation
+    };
+    await supabase.from('applicants').update(syncData).eq('id', editId);
     setEditId(null);
     fetchData();
   };
@@ -136,10 +148,12 @@ export default function Dashboard() {
       (a.email || "").toLowerCase().includes(s) || 
       (a.phone || "").includes(s);
 
+    const matchesOwnership = viewType === 'All' || a.created_by === currentUser?.id;
     const isArchived = ['Failed Interview', 'Blacklisted', 'Resigned', 'Rejected Offer'].includes(a.status);
-    if (filterStatus === 'Archive') return matchesSearch && isArchived;
-    if (filterStatus === 'All') return matchesSearch && !isArchived;
-    return matchesSearch && a.status === filterStatus;
+    
+    if (filterStatus === 'Archive') return matchesSearch && matchesOwnership && isArchived;
+    if (filterStatus === 'All') return matchesSearch && matchesOwnership && !isArchived;
+    return matchesSearch && matchesOwnership && a.status === filterStatus;
   });
 
   return (
@@ -201,11 +215,17 @@ export default function Dashboard() {
       )}
 
       {/* HEADER SECTION */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b-8 border-slate-900 pb-8">
-        <h1 className="text-7xl font-black text-slate-900 tracking-tighter italic uppercase leading-none">Dashboard</h1>
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b-8 border-slate-900 pb-8">
+        <div className="space-y-4">
+           <h1 className="text-7xl font-black text-slate-900 tracking-tighter italic uppercase leading-none">Dashboard</h1>
+           <div className="flex gap-2">
+              <button onClick={() => setViewType('All')} className={`px-6 py-2 rounded-full border-4 border-slate-900 font-black text-[10px] uppercase transition-all ${viewType === 'All' ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-900 hover:bg-slate-100'}`}>🌍 Team's View</button>
+              <button onClick={() => setViewType('Mine')} className={`px-6 py-2 rounded-full border-4 border-slate-900 font-black text-[10px] uppercase transition-all ${viewType === 'Mine' ? 'bg-blue-600 text-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]' : 'bg-white text-slate-900 hover:bg-blue-50'}`}>👤 My Candidates</button>
+           </div>
+        </div>
         <input 
           type="text" 
-          placeholder="Search name, job, email, or phone..." 
+          placeholder="Search name, role, email..." 
           className="w-full md:w-96 bg-white px-8 py-5 rounded-[2.5rem] border-4 border-slate-900 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] font-bold text-sm outline-none focus:bg-blue-50 transition-all placeholder:text-slate-300" 
           value={searchTerm} 
           onChange={e => setSearchTerm(e.target.value)} 
@@ -250,6 +270,10 @@ export default function Dashboard() {
                       </>
                     )}
                   </div>
+                  {/* RECRUITER TAG */}
+                  <div className="mt-4 text-[9px] font-black uppercase bg-black/10 inline-flex items-center gap-2 px-3 py-1 rounded-full">
+                    👤 {app.creator_email === currentUser?.email ? 'Me' : (app.creator_email || 'System')}
+                  </div>
               </div>
 
               <div className="p-10 space-y-8 flex-grow">
@@ -276,11 +300,11 @@ export default function Dashboard() {
                 {isArchived ? (
                   <div className="space-y-6">
                     <div className="bg-slate-900 p-8 rounded-[3.5rem] space-y-5 text-white shadow-inner">
-                      {app.status === 'Resigned' && <div className="space-y-1"><span className="text-[9px] font-black text-blue-400 uppercase italic">Date of Leaving</span><p className="text-sm font-bold text-rose-400 italic">{app.resignation_date || 'N/A'}</p></div>}
-                      <div className="space-y-1"><span className="text-[9px] font-black text-blue-400 uppercase italic">Reason / Remarks</span><p className="text-xs italic opacity-80 leading-relaxed font-medium line-clamp-4">"{app.remarks || 'No remarks.'}"</p></div>
+                      {app.status === 'Resigned' && <div className="space-y-1"><span className="text-[9px] font-black text-blue-400 uppercase italic tracking-widest">Resigned On</span><p className="text-sm font-bold text-rose-400 italic">{app.resignation_date || 'N/A'}</p></div>}
+                      <div className="space-y-1"><span className="text-[9px] font-black text-blue-400 uppercase italic tracking-widest">History</span><p className="text-xs italic opacity-80 leading-relaxed line-clamp-3">"{app.remarks || 'No remarks.'}"</p></div>
                     </div>
                     {/* RESET BUTTON */}
-                    <button onClick={() => updateStatus(app.id, 'Applied', '', '', '', true)} className="w-full py-6 bg-white text-slate-900 rounded-[2.5rem] border-4 border-slate-900 font-black uppercase text-[11px] tracking-widest shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:bg-blue-600 hover:text-white transition-all">🔄 Reset to Applied</button>
+                    <button onClick={() => { if(confirm(`Reset ${app.name} to Applied?`)) updateStatus(app.id, 'Applied', '', '', '', true) }} className="w-full py-6 bg-white text-slate-900 rounded-[2.5rem] border-4 border-slate-900 font-black uppercase text-[11px] tracking-widest shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:bg-blue-600 hover:text-white transition-all">🔄 Reset to Applied</button>
                   </div>
                 ) : (
                   <div className="space-y-6">
@@ -317,7 +341,7 @@ export default function Dashboard() {
                     )}
                   </div>
                   <div className="bg-slate-50 p-5 rounded-[1.5rem] border-2 border-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-center">
-                    <span className="block text-[9px] font-black text-slate-400 uppercase mb-1 italic text-blue-600">Expected</span>
+                    <span className="block text-[9px] font-black text-blue-600 uppercase mb-1 italic text-blue-600">Expected</span>
                     {editId === app.id ? (
                       <input className="w-full text-center bg-white border-2 border-slate-200 rounded-lg font-black py-1 text-xs text-blue-600" value={editData.expected_salary} onChange={e => setEditData({...editData, expected_salary: e.target.value})} />
                     ) : (
