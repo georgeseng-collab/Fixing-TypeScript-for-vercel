@@ -31,56 +31,53 @@ export default function Dashboard() {
     return themes[status] || 'border-slate-300 text-slate-600 bg-slate-50';
   };
 
-  // --- THE SURGICAL TIME FIX ---
-  const handleCalendarAndHistory = (app, type) => {
+  // --- THE ULTIMATE FIX FOR SINGAPORE TIME ---
+  const handleTimezoneLockedBooking = (app, type) => {
     const dateIn = window.prompt(`Confirm Date (YYYY-MM-DD):`, new Date().toLocaleDateString('en-CA'));
-    const timeIn = window.prompt(`Confirm Time (24h HH:MM):`, "10:00");
+    const timeIn = window.prompt(`Confirm Start Time (24h HH:MM):`, "10:00");
     
     if (!dateIn || !timeIn) return null;
 
-    // 1. Internal History Fix: Hardcode the string with the Singapore offset
-    // This prevents the "6:00 PM" shift by telling DB exactly what timezone this is.
-    const internalIsoWithOffset = `${dateIn}T${timeIn}:00+08:00`;
+    // 1. DATABASE SAVING (Internal History)
+    // We store it as a string with the +08:00 offset so it never shifts to 6pm
+    const internalFixedTimestamp = `${dateIn}T${timeIn}:00+08:00`;
 
-    // 2. Google Calendar Fix:
+    // 2. GOOGLE CALENDAR LINK
     const gDate = dateIn.replace(/-/g, '');
     const gTime = timeIn.replace(/:/g, '');
-    const startStr = `${gDate}T${gTime}00`;
     
+    // Calculate End Time (Start + 1 Hour)
     let [h, m] = timeIn.split(':').map(Number);
     let endH = (h + 1).toString().padStart(2, '0');
+    
+    const startStr = `${gDate}T${gTime}00`;
     const endStr = `${gDate}T${endH}${m.toString().padStart(2, '0')}00`;
 
     const title = encodeURIComponent(`${type}: ${app.name}`);
-    const details = encodeURIComponent(`Candidate: ${app.name}\nRole: ${app.job_role}`);
+    const details = encodeURIComponent(`Candidate: ${app.name}\nRole: ${app.job_role}\nEmail: ${app.email}`);
     
-    // ctz=Asia/Singapore is mandatory to prevent the "12:30 PM" shift in Google
+    // ctz=Asia/Singapore tells Google to ignore the system clock and use Singapore SGT
     const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startStr}/${endStr}&details=${details}&ctz=Asia/Singapore`;
     
     window.open(url, '_blank');
-
-    return internalIsoWithOffset;
+    return internalFixedTimestamp;
   };
 
   const handleStatusChange = async (app, newStatus) => {
     let finalOffer = app.final_offer_salary;
-    // For standard updates, we still use UTC, but for Calendar, we use our fixed string
-    let customHistoryDate = new Date().toISOString(); 
+    let timestamp = new Date().toISOString(); 
 
     if (newStatus === 'Interviewing' || newStatus === 'Hired') {
-      const fixedIso = handleCalendarAndHistory(app, newStatus.toUpperCase());
-      if (fixedIso) customHistoryDate = fixedIso; else return;
+      const fixedTime = handleTimezoneLockedBooking(app, newStatus.toUpperCase());
+      if (fixedTime) timestamp = fixedTime; else return;
     }
 
     if (newStatus === 'Offered') {
-      const amount = window.prompt(`Offer Salary:`, app.salary_expectation || "");
+      const amount = window.prompt(`Final Offer Salary:`, app.salary_expectation || "");
       if (amount !== null) finalOffer = amount;
     }
 
-    const history = [...(app.status_history || []), { 
-      status: newStatus, 
-      date: customHistoryDate 
-    }];
+    const history = [...(app.status_history || []), { status: newStatus, date: timestamp }];
 
     await supabase.from('applicants').update({ 
       status: newStatus, 
@@ -102,15 +99,13 @@ export default function Dashboard() {
     (filterStatus === 'All' || a.status === filterStatus)
   );
 
-  if (loading) return <div className="h-screen flex items-center justify-center font-black text-slate-300 text-3xl animate-pulse tracking-tighter uppercase">GenieBook.ATS</div>;
-
   return (
-    <div className="max-w-7xl mx-auto px-6 py-10 space-y-10">
+    <div className="max-w-7xl mx-auto px-6 py-10 space-y-10 pb-24">
       
-      {/* CATEGORY TABS */}
+      {/* 📊 CATEGORY TABS */}
       <div className="flex flex-wrap gap-2">
         {['All', 'Applied', 'Interviewing', 'Offered', 'Hired', 'Rejected Offer'].map(s => (
-          <button key={s} onClick={() => setFilterStatus(s)} className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] transition-all ${
+          <button key={s} onClick={() => setFilterStatus(s)} className={`px-5 py-2 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${
             filterStatus === s ? 'bg-slate-900 text-white shadow-xl' : 'bg-white text-slate-400 border border-slate-100'
           }`}>
             {s === 'Rejected Offer' ? 'Declined' : s}
@@ -118,83 +113,76 @@ export default function Dashboard() {
         ))}
       </div>
 
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white p-8 rounded-[3rem] border border-slate-50 shadow-sm">
-        <h1 className="text-4xl font-black text-slate-900 tracking-tighter italic">Talent<span className="text-blue-600">.</span></h1>
-        <input 
-          type="text" 
-          placeholder="Filter..." 
-          className="bg-slate-50 px-8 py-4 rounded-3xl outline-none border-2 border-transparent focus:border-blue-500 w-full md:w-80 font-bold text-sm"
-          onChange={e => setSearchTerm(e.target.value)}
-        />
-      </div>
-
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
         {filtered.map(app => (
-          <div key={app.id} className="bg-white rounded-[3.5rem] border border-slate-100 shadow-xl shadow-slate-200/40 flex flex-col overflow-hidden transition-all hover:shadow-2xl">
-            <div className={`p-8 pb-4 border-t-[14px] ${getStatusTheme(app.status).split(' ')[0]}`}>
+          <div key={app.id} className="bg-white rounded-[3.5rem] border border-slate-100 shadow-xl overflow-hidden relative group">
+            <div className={`h-3 ${getStatusTheme(app.status).split(' ')[0]}`}></div>
+            
+            <div className="p-10 space-y-6">
               <div className="flex justify-between items-start">
                 <div>
-                  <h2 className="text-2xl font-black text-slate-800 tracking-tight leading-none">{app.name}</h2>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-blue-500 mt-2">{app.job_role}</p>
+                  <h2 className="text-3xl font-black text-slate-800 leading-none tracking-tighter">{app.name}</h2>
+                  <p className="text-[11px] font-black text-blue-500 uppercase tracking-widest mt-2">{app.job_role}</p>
                 </div>
-                <button onClick={() => editId === app.id ? saveEdit() : (setEditId(app.id), setEditData(app))} className="p-3 bg-slate-50 rounded-2xl hover:bg-slate-900 transition-all shadow-sm">
+                <button onClick={() => editId === app.id ? saveEdit() : (setEditId(app.id), setEditData(app))} className="p-4 bg-slate-50 rounded-2xl hover:bg-slate-900 hover:text-white transition-all">
                   {editId === app.id ? '💾' : '✏️'}
                 </button>
               </div>
-            </div>
 
-            <div className="p-8 pt-0 space-y-6 flex-grow">
-              <div className="grid grid-cols-2 gap-2">
-                <a href={`mailto:${app.email}`} className="bg-slate-50 p-3 rounded-2xl text-center text-[10px] font-black text-slate-500 uppercase">Email</a>
-                <a href={`https://wa.me/${app.phone?.replace(/[^0-9]/g, '')}`} target="_blank" className="bg-emerald-50 p-3 rounded-2xl text-center text-[10px] font-black text-emerald-700 hover:bg-emerald-600 hover:text-white uppercase transition-all">WhatsApp</a>
-              </div>
-
-              <div className="bg-slate-50 p-6 rounded-[2.5rem] border border-slate-100 space-y-4">
-                <div className="flex justify-between text-xs font-black items-center">
-                  <span className="text-slate-400 uppercase text-[9px] tracking-widest font-black">Expectation</span>
-                  <span className="text-blue-600">{app.salary_expectation || '—'}</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-8 pt-0 space-y-4">
-              <select 
-                value={app.status} 
-                onChange={e => handleStatusChange(app, e.target.value)} 
-                className={`w-full py-4 px-4 rounded-2xl text-[11px] font-black uppercase tracking-widest cursor-pointer border-2 appearance-none text-center ${getStatusTheme(app.status)}`}
+              {/* ACTION: ONE-CLICK BOOKING */}
+              <button 
+                onClick={() => handleStatusChange(app, 'Interviewing')}
+                className="w-full py-5 bg-amber-400 text-amber-950 rounded-[2rem] font-black text-[12px] uppercase tracking-widest hover:bg-amber-500 transition-all shadow-lg shadow-amber-100"
               >
-                <option value="Applied">Applied</option>
-                <option value="Interviewing">Interviewing</option>
-                <option value="Offered">Offered</option>
-                <option value="Hired">Hired</option>
-                <option value="Rejected Offer">Rejected Offer</option>
-                <option disabled>── ARCHIVE ──</option>
-                <option value="Failed Interview">Failed</option>
-                <option value="Quit">Quit</option>
-                <option value="Blacklisted">Blacklisted</option>
-              </select>
+                📅 Schedule Interview
+              </button>
 
-              <div className="flex gap-2">
-                <a href={app.resume_metadata?.url} target="_blank" className="flex-1 text-center bg-slate-900 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest">Resume</a>
-                <button onClick={() => setShowHistoryId(showHistoryId === app.id ? null : app.id)} className="px-6 bg-slate-50 rounded-2xl text-slate-300 font-bold hover:text-blue-500 transition-colors">🕒</button>
+              <div className="bg-slate-50 p-6 rounded-[2.5rem] border border-slate-100 space-y-4 shadow-inner">
+                <div className="flex justify-between items-center text-xs font-bold">
+                  <span className="text-slate-400 uppercase text-[9px]">Last Drawn</span>
+                  {editId === app.id ? <input className="w-20 text-right border-b" value={editData.last_drawn_salary} onChange={e => setEditData({...editData, last_drawn_salary: e.target.value})} /> : <span>{app.last_drawn_salary || '—'}</span>}
+                </div>
+                <div className="flex justify-between items-center text-xs font-black">
+                  <span className="text-slate-400 uppercase text-[9px]">Expected</span>
+                  {editId === app.id ? <input className="w-20 text-right border-b" value={editData.salary_expectation} onChange={e => setEditData({...editData, salary_expectation: e.target.value})} /> : <span className="text-blue-600">{app.salary_expectation || '—'}</span>}
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-slate-50">
+                <select 
+                  value={app.status} 
+                  onChange={e => handleStatusChange(app, e.target.value)} 
+                  className={`w-full py-5 px-6 rounded-[2rem] text-[11px] font-black uppercase tracking-widest cursor-pointer appearance-none text-center border-2 ${getStatusTheme(app.status)}`}
+                >
+                  <option value="Applied">Applied</option>
+                  <option value="Interviewing">Interviewing</option>
+                  <option value="Offered">Offered</option>
+                  <option value="Hired">Hired</option>
+                  <option value="Rejected Offer">Rejected Offer</option>
+                </select>
+              </div>
+
+              <div className="flex gap-3">
+                <a href={app.resume_metadata?.url} target="_blank" className="flex-1 text-center bg-slate-900 text-white py-5 rounded-[2rem] font-black text-[11px] uppercase tracking-widest shadow-lg">Resume</a>
+                <button onClick={() => setShowHistoryId(showHistoryId === app.id ? null : app.id)} className="px-8 bg-slate-50 rounded-[2rem] text-slate-300 font-bold hover:text-blue-500">🕒</button>
               </div>
             </div>
 
-            {/* HISTORY OVERLAY */}
+            {/* 🕒 THE FIXED HISTORY DISPLAY */}
             {showHistoryId === app.id && (
-              <div className="absolute inset-0 bg-white/95 backdrop-blur-sm z-50 p-10 flex flex-col rounded-[2.8rem] animate-fade-in shadow-2xl">
+              <div className="absolute inset-0 bg-white/95 backdrop-blur-md z-50 p-12 flex flex-col rounded-[3.5rem] animate-fade-in shadow-2xl">
                 <div className="flex justify-between items-center mb-10 border-b pb-4">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-black">Lifecycle</span>
-                  <button onClick={() => setShowHistoryId(null)} className="h-10 w-10 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 font-bold hover:text-red-500 transition-all">✕</button>
+                  <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest">History Log (SGT)</span>
+                  <button onClick={() => setShowHistoryId(null)} className="h-10 w-10 flex items-center justify-center rounded-full bg-slate-50 text-slate-400 font-bold">✕</button>
                 </div>
-                <div className="flex-grow overflow-y-auto space-y-8">
+                <div className="flex-grow overflow-y-auto space-y-10">
                   {app.status_history?.map((h, i) => (
-                    <div key={i} className="relative pl-8 border-l-2 border-slate-100">
-                      <div className="absolute -left-[5px] top-1 w-2 h-2 rounded-full bg-blue-500 shadow-lg shadow-blue-200"></div>
-                      <div className="text-xs font-black uppercase text-slate-800 tracking-tight">{h.status}</div>
-                      <div className="text-[10px] text-slate-400 font-bold mt-1">
-                        {/* THE DISPLAY FIX: Force Singapore display regardless of storage */}
-                        {new Date(h.date).toLocaleString('en-SG', { timeZone: 'Asia/Singapore', hour12: true })}
+                    <div key={i} className="relative pl-10 border-l-4 border-slate-50">
+                      <div className="absolute -left-[10px] top-1 w-4 h-4 rounded-full bg-blue-500 shadow-lg shadow-blue-200"></div>
+                      <div className="text-sm font-black uppercase text-slate-800 tracking-tighter">{h.status}</div>
+                      <div className="text-[11px] text-slate-400 font-bold mt-2">
+                        {/* THIS LINE ENSURES THE TEXT SAYS 10:00 AM */}
+                        {new Date(h.date).toLocaleString('en-SG', { timeZone: 'Asia/Singapore', hour: '2-digit', minute: '2-digit', hour12: true, day: 'numeric', month: 'short' })}
                       </div>
                     </div>
                   ))}
