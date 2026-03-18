@@ -46,23 +46,20 @@ export default function ApprovalHub() {
   useEffect(() => { fetchData(); }, []);
 
   const fetchData = async () => {
-    // Broadened filter to ensure candidates show up
+    // FIXED FILTER: Select candidates in stages that require approval
     const { data: apps } = await supabase.from('applicants')
       .select('*')
+      .in('status', ['Offered', 'Offer Accepted']) // Only show people ready for approval
       .order('name');
     
-    // Filter locally to be safer
-    const filteredApps = (apps || []).filter(a => ['Offered', 'Offer Accepted', 'Interviewing'].includes(a.status));
-
     const { data: team } = await supabase.from('team_members').select('name, email').order('name');
     const { data: hist } = await supabase.from('salary_approval_history').select('*').order('sent_at', { ascending: false });
 
-    setApplicants(filteredApps);
+    setApplicants(apps || []);
     setTeamMembers(team || []);
     setHistory(hist || []);
   };
 
-  // NEW: Helper to handle ranges (3500 - 4500)
   const n = (val) => {
     if (!val) return 0;
     const str = String(val).toLowerCase();
@@ -169,7 +166,7 @@ export default function ApprovalHub() {
                 <label className={labelClass}>Candidate Selection</label>
                 <select className={selectClass} value={selectedId} onChange={e => handleCandidateChange(e.target.value)}>
                   <option value="">Choose Candidate...</option>
-                  {applicants.map(a => <option key={a.id} value={a.id}>{a.name} ({a.status})</option>)}
+                  {applicants.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
               </div>
 
@@ -177,7 +174,7 @@ export default function ApprovalHub() {
                 <label className="text-[9px] font-black uppercase text-slate-400 italic block mb-2 tracking-widest">CC Team Members</label>
                 <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto no-scrollbar">
                   {teamMembers.map(m => (
-                    <button key={m.email} onClick={() => toggleCC(m.email)} className={`px-3 py-2 rounded-xl border-2 text-[9px] font-black uppercase transition-all ${selectedCC.includes(m.email) ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-400 border-slate-200'}`}>{m.name}</button>
+                    <button key={m.email} onClick={() => toggleCC(m.email)} className={`px-3 py-2 rounded-xl border-2 text-[9px] font-black uppercase transition-all ${selectedCC.includes(m.email) ? 'bg-slate-900 text-white border-slate-900 shadow-md' : 'bg-white text-slate-400 border-slate-200'}`}>{m.name}</button>
                   ))}
                 </div>
               </div>
