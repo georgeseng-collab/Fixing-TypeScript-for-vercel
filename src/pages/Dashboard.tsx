@@ -26,27 +26,22 @@ export default function Dashboard() {
   useEffect(() => { fetchApplicants(); }, []);
 
   const handleStatusUpdate = async (applicant, newStatus) => {
-    // If selecting 'Offered', intercept to show the salary prompt
     if (newStatus === 'Offered') {
       setActiveApp(applicant);
       setShowOfferModal(true);
       return;
     }
-    // Otherwise, proceed with standard update
     await executeUpdate(applicant, newStatus);
   };
 
   const executeUpdate = async (applicant, newStatus, extraData = {}) => {
     const timestamp = new Date().toISOString();
-    
-    // Create the new history log entry
     const newHistoryEntry = {
       status: newStatus,
       date: timestamp,
       ...extraData
     };
 
-    // CRITICAL: Spread existing history so we don't lose past data
     const updatedHistory = [...(applicant.status_history || []), newHistoryEntry];
 
     const { error } = await supabase
@@ -74,53 +69,52 @@ export default function Dashboard() {
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-10 relative pb-32">
-      {/* Header Section */}
+      {/* HEADER SECTION */}
       <div className="flex justify-between items-end mb-16 px-4">
         <div>
-          <h1 className="text-6xl font-black italic tracking-tighter text-slate-900">Talent Pipeline</h1>
-          <p className="text-slate-400 font-bold uppercase tracking-[0.3em] text-[10px] mt-4 ml-1">Live Recruitment Overview</p>
+          <h1 className="text-6xl font-black italic tracking-tighter text-slate-900 uppercase">Talent Pipeline</h1>
+          <p className="text-slate-400 font-bold uppercase tracking-[0.3em] text-[10px] mt-4 ml-1">Centralized Recruitment Intelligence</p>
         </div>
-        <div className="bg-slate-900 text-white px-8 py-4 rounded-[2rem] font-black text-xs italic">
-          {applicants.length} Total Candidates
+        <div className="bg-slate-900 text-white px-10 py-5 rounded-[2.5rem] font-black text-xs italic shadow-2xl">
+          {applicants.length} TOTAL CANDIDATES
         </div>
       </div>
 
-      {/* Main Table/Grid */}
-      <div className="grid gap-6">
+      {/* CANDIDATE LIST */}
+      <div className="grid gap-8">
         {applicants.map((app) => (
-          <div key={app.id} className="group bg-white p-10 rounded-[4rem] shadow-sm border border-slate-50 flex flex-col md:flex-row md:items-center justify-between hover:shadow-2xl hover:border-blue-100 transition-all duration-500">
+          <div key={app.id} className="group bg-white p-12 rounded-[4.5rem] shadow-sm border border-slate-100 flex flex-col md:flex-row md:items-center justify-between hover:shadow-2xl hover:border-blue-200 transition-all duration-500">
             
             <div className="flex-1">
-              <div className="flex items-center gap-4 mb-2">
-                <span className={`w-3 h-3 rounded-full ${
+              <div className="flex items-center gap-5 mb-4">
+                <div className={`w-4 h-4 rounded-full ${
                   app.status === 'Hired' ? 'bg-emerald-500' : 
                   app.status === 'Offered' ? 'bg-amber-500' : 
-                  app.status === 'Rejected' ? 'bg-rose-500' : 'bg-blue-500'
-                } shadow-lg animate-pulse`} />
-                <h2 className="text-3xl font-black text-slate-800 tracking-tight italic uppercase">{app.name}</h2>
+                  app.status === 'Rejected' ? 'bg-rose-500' : 'bg-blue-600'
+                } shadow-[0_0_15px_rgba(0,0,0,0.1)]`} />
+                <h2 className="text-4xl font-black text-slate-900 tracking-tighter italic uppercase">{app.name}</h2>
               </div>
               
-              <div className="flex items-center gap-6 mt-4">
+              <div className="flex items-center gap-10">
                 <div>
-                  <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Role</div>
-                  <div className="font-bold text-slate-600 italic">{app.job_role || 'Not Specified'}</div>
+                  <div className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em] mb-1">Target Role</div>
+                  <div className="font-black text-slate-500 italic text-lg">{app.job_role || 'General'}</div>
                 </div>
                 
-                <div className="h-8 w-[1px] bg-slate-100" />
+                <div className="h-10 w-[2px] bg-slate-50" />
                 
                 <div>
-                  <div className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Pipeline Journey</div>
-                  <div className="flex gap-2 mt-1">
+                  <div className="text-[9px] font-black text-slate-300 uppercase tracking-[0.2em] mb-2">Status Timeline</div>
+                  <div className="flex gap-3">
                     {app.status_history?.map((h, i) => (
-                      <div key={i} className="group/dot relative cursor-help">
-                        <div className="w-4 h-4 rounded-full bg-slate-100 border-2 border-white shadow-sm group-hover/dot:bg-blue-600 transition-all" />
-                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 hidden group-hover/dot:block z-50 animate-in fade-in slide-in-from-bottom-2">
-                          <div className="bg-slate-900 text-white text-[9px] font-black p-3 rounded-2xl whitespace-nowrap shadow-2xl uppercase tracking-widest">
-                            {h.status} <br/>
-                            <span className="text-slate-400 font-bold lowercase italic">{format(new Date(h.date), 'dd MMM')}</span>
-                            {h.salary && <div className="text-emerald-400 mt-1 border-t border-slate-700 pt-1">Offer: ${h.salary}</div>}
+                      <div key={i} className="group/dot relative">
+                        <div className="w-5 h-5 rounded-full bg-slate-50 border-4 border-white shadow-inner group-hover/dot:bg-blue-600 transition-all cursor-crosshair" />
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 hidden group-hover/dot:block z-50">
+                          <div className="bg-slate-900 text-white text-[10px] font-black p-4 rounded-[1.5rem] whitespace-nowrap shadow-2xl border border-slate-800">
+                            <span className="uppercase tracking-widest">{h.status}</span>
+                            <div className="text-slate-500 font-bold mt-1 lowercase italic">{format(new Date(h.date), 'MMM dd, yyyy')}</div>
+                            {h.salary && <div className="text-emerald-400 mt-2 pt-2 border-t border-slate-700 font-black">OFFER: ${h.salary}</div>}
                           </div>
-                          <div className="w-2 h-2 bg-slate-900 rotate-45 absolute -bottom-1 left-1/2 -translate-x-1/2" />
                         </div>
                       </div>
                     ))}
@@ -129,21 +123,27 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="mt-8 md:mt-0 flex items-center gap-4">
-              <select 
-                value={app.status}
-                onChange={(e) => handleStatusUpdate(app, e.target.value)}
-                className="appearance-none bg-slate-50 border-none px-10 py-6 rounded-[2.5rem] font-black text-[11px] uppercase tracking-widest text-slate-600 focus:ring-4 focus:ring-blue-100 outline-none cursor-pointer hover:bg-slate-100 transition-all"
-              >
-                <option value="Applied">Applied</option>
-                <option value="Interviewing">Interviewing</option>
-                <option value="Offered">Offered</option>
-                <option value="Hired">Hired</option>
-                <option value="Rejected">Rejected</option>
-              </select>
+            {/* ACTION AREA */}
+            <div className="mt-10 md:mt-0 flex items-center gap-6">
+              <div className="relative">
+                <select 
+                  value={app.status}
+                  onChange={(e) => handleStatusUpdate(app, e.target.value)}
+                  className="appearance-none bg-slate-50 border-none px-12 py-7 rounded-[3rem] font-black text-[12px] uppercase tracking-[0.15em] text-slate-700 focus:ring-8 focus:ring-blue-50 outline-none cursor-pointer hover:bg-slate-100 transition-all shadow-inner min-w-[200px]"
+                >
+                  <option value="Applied">Applied</option>
+                  <option value="Interviewing">Interviewing</option>
+                  <option value="Offered">Offered</option>
+                  <option value="Hired">Hired</option>
+                  <option value="Rejected">Rejected</option>
+                </select>
+                <div className="absolute right-6 top-1/2 -translate-y-1/2 pointer-events-none text-slate-300">▼</div>
+              </div>
               
-              <button className="p-6 bg-slate-900 text-white rounded-[2rem] hover:bg-blue-600 transition-colors shadow-xl active:scale-90">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+              <button className="p-7 bg-slate-900 text-white rounded-[2.5rem] hover:bg-blue-600 transition-all shadow-xl active:scale-90 group">
+                <svg className="w-6 h-6 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="4">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                </svg>
               </button>
             </div>
 
@@ -151,35 +151,35 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* --- OFFER MODAL --- */}
+      {/* OFFER MODAL */}
       {showOfferModal && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xl z-[200] flex items-center justify-center p-6 animate-in fade-in duration-300">
-          <div className="bg-white w-full max-w-lg rounded-[4rem] shadow-2xl overflow-hidden p-12 border border-white">
-            <h3 className="text-4xl font-black italic tracking-tighter text-slate-900 mb-2">Record Offer</h3>
-            <p className="text-slate-400 font-bold text-sm mb-10">Set the monthly base salary for <span className="text-blue-600">{activeApp?.name}</span></p>
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-xl z-[200] flex items-center justify-center p-8">
+          <div className="bg-white w-full max-w-xl rounded-[5rem] shadow-[0_50px_100px_rgba(0,0,0,0.3)] overflow-hidden p-16 border-4 border-white">
+            <h3 className="text-5xl font-black italic tracking-tighter text-slate-900 mb-4 uppercase">Financial Offer</h3>
+            <p className="text-slate-400 font-bold text-sm mb-12 tracking-wide uppercase">Assign monthly compensation for <span className="text-blue-600">{activeApp?.name}</span></p>
             
-            <div className="relative group mb-10">
-              <div className="absolute left-8 top-1/2 -translate-y-1/2 font-black text-slate-300 text-2xl group-focus-within:text-blue-600 transition-colors">$</div>
+            <div className="relative mb-12">
+              <div className="absolute left-10 top-1/2 -translate-y-1/2 font-black text-slate-200 text-4xl italic">$</div>
               <input 
                 type="number"
                 autoFocus
                 placeholder="0.00"
                 value={salaryInput}
                 onChange={(e) => setSalaryInput(e.target.value)}
-                className="w-full bg-slate-50 rounded-[2.5rem] py-8 pl-14 pr-8 text-3xl font-black text-slate-800 outline-none focus:ring-4 focus:ring-blue-50 shadow-inner"
+                className="w-full bg-slate-50 rounded-[3rem] py-10 pl-20 pr-10 text-5xl font-black text-slate-900 outline-none focus:ring-8 focus:ring-blue-50 shadow-inner tracking-tighter"
               />
             </div>
 
-            <div className="flex gap-4">
+            <div className="flex gap-6">
               <button 
                 onClick={() => setShowOfferModal(false)}
-                className="flex-1 py-6 bg-slate-100 text-slate-400 rounded-[2rem] font-black text-[11px] uppercase tracking-widest hover:bg-slate-200 transition-all"
+                className="flex-1 py-7 bg-slate-100 text-slate-400 rounded-[2.5rem] font-black text-[13px] uppercase tracking-widest hover:bg-slate-200 transition-all"
               >
-                Cancel
+                Back
               </button>
               <button 
                 onClick={() => executeUpdate(activeApp, 'Offered', { salary: salaryInput })}
-                className="flex-[2] py-6 bg-blue-600 text-white rounded-[2rem] font-black text-[11px] uppercase tracking-widest shadow-2xl shadow-blue-200 active:scale-95 transition-all"
+                className="flex-[2] py-7 bg-blue-600 text-white rounded-[2.5rem] font-black text-[13px] uppercase tracking-widest shadow-2xl shadow-blue-200 active:scale-95 transition-all"
               >
                 Confirm Offer
               </button>
