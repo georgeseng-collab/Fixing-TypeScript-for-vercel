@@ -6,7 +6,6 @@ import { supabase } from '../db';
 export default function Layout({ children }) {
   const location = useLocation();
   
-  // Highlighting logic for active links (Kept your exact logic)
   const navLink = (path) => `flex items-center gap-2 px-3 py-2 rounded-xl font-bold text-sm transition-all ${
     location.pathname === path 
       ? 'bg-blue-50 text-blue-600 shadow-sm' 
@@ -29,9 +28,11 @@ export default function Layout({ children }) {
             <div className="hidden md:flex items-center gap-1">
               <Link to="/" className={navLink('/')}>📊 Pipeline</Link>
               <Link to="/search" className={navLink('/search')}>🔍 Search</Link>
-              <Link to="/calendar" className={navLink('/calendar')}>📅 Calendar</Link>
               
-              {/* NEW TEAM SETTINGS LINK */}
+              {/* CHALLENGES / LEADERBOARD LINK */}
+              <Link to="/leaderboard" className={navLink('/leaderboard')}>🏆 Challenges</Link>
+              
+              <Link to="/calendar" className={navLink('/calendar')}>📅 Calendar</Link>
               <Link to="/team" className={navLink('/team')}>👥 Team</Link>
               
               {/* Internal Tools Group */}
@@ -63,7 +64,6 @@ export default function Layout({ children }) {
 
       {/* Main Page Container */}
       <main className="max-w-7xl mx-auto px-6 py-10">
-        {/* Kept your smooth animation wrapper */}
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
           {children}
         </div>

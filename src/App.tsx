@@ -15,7 +15,8 @@ import Archive from './pages/Archive';
 import Login from './pages/Login';
 import EmailHub from './pages/EmailHub'; 
 import ApprovalHub from './pages/ApprovalHub';
-import TeamSettings from './pages/TeamSettings'; // <--- ADDED THIS
+import TeamSettings from './pages/TeamSettings';
+import Leaderboard from './pages/Leaderboard'; // <--- IMPORTED LEADERBOARD
 
 export default function App() {
   const [session, setSession] = useState(undefined);
@@ -46,7 +47,6 @@ export default function App() {
         <Route path="/login" element={!session ? <Login /> : <Navigate to="/" />} />
         
         {/* Protected Routes wrapped in Layout */}
-        {/* All routes below require a session. If no session, redirect to /login */}
         <Route path="/" element={session ? <Layout><Dashboard /></Layout> : <Navigate to="/login" />} />
         <Route path="/add" element={session ? <Layout><ApplicantForm /></Layout> : <Navigate to="/login" />} />
         <Route path="/search" element={session ? <Layout><CandidateSearch /></Layout> : <Navigate to="/login" />} />
@@ -57,7 +57,10 @@ export default function App() {
         <Route path="/offers" element={session ? <Layout><EmailHub /></Layout> : <Navigate to="/login" />} />
         <Route path="/approvals" element={session ? <Layout><ApprovalHub /></Layout> : <Navigate to="/login" />} />
         
-        {/* NEW TEAM SETTINGS ROUTE */}
+        {/* NEW LEADERBOARD ROUTE (Challenges) */}
+        <Route path="/leaderboard" element={session ? <Layout><Leaderboard /></Layout> : <Navigate to="/login" />} />
+        
+        {/* Team Settings */}
         <Route path="/team" element={session ? <Layout><TeamSettings /></Layout> : <Navigate to="/login" />} />
         
         {/* Catch-all redirect */}
