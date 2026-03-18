@@ -6,7 +6,6 @@ import { enUS } from 'date-fns/locale';
 import { supabase } from '../db';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 
-// FIXED LOCALES ASSIGNMENT
 const locales = { 'en-US': enUS };
 const localizer = dateFnsLocalizer({ 
   format, 
@@ -24,7 +23,7 @@ export default function CalendarView() {
   // Modal & Flow States
   const [showModal, setShowModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [step, setStep] = useState(1); 
+  const [step, setStep] = useState(1); // 1: Select Candidate, 2: Select Time
   const [selectedApp, setSelectedApp] = useState(null);
   const [selectedEventId, setSelectedEventId] = useState(null);
   const [searchCandidate, setSearchCandidate] = useState('');
@@ -34,35 +33,31 @@ export default function CalendarView() {
   const [formTime, setFormTime] = useState('10:00');
 
   const fetchData = async () => {
-    try {
-      const { data } = await supabase.from('applicants').select('*');
-      if (!data) return;
-      setApplicants(data);
-      
-      const calendarEvents = data.flatMap(app => 
-        (app.status_history || [])
-          .filter(h => h.status === 'Interviewing' || h.status === 'Hired')
-          .map((h, idx) => ({
-            id: `${app.id}-${idx}`,
-            candidateId: app.id,
-            historyIndex: idx,
-            candidate: app,
-            type: h.status,
-            start: new Date(h.date),
-            end: addHours(new Date(h.date), 1),
-            title: `${h.status}: ${app.job_role} - ${app.name}`
-          }))
-      );
-      setEvents(calendarEvents);
-    } catch (err) {
-      console.error("Fetch Error:", err);
-    } finally {
-      setLoading(false);
-    }
+    const { data } = await supabase.from('applicants').select('*');
+    if (!data) return;
+    setApplicants(data);
+    
+    const calendarEvents = data.flatMap(app => 
+      (app.status_history || [])
+        .filter(h => h.status === 'Interviewing' || h.status === 'Hired')
+        .map((h, idx) => ({
+          id: `${app.id}-${idx}`,
+          candidateId: app.id,
+          candidate: app,
+          historyIndex: idx,
+          type: h.status,
+          start: new Date(h.date),
+          end: addHours(new Date(h.date), 1),
+          title: `${h.status}: ${app.job_role} - ${app.name}`
+        }))
+    );
+    setEvents(calendarEvents);
+    setLoading(false);
   };
 
   useEffect(() => { fetchData(); }, []);
 
+  // OPEN DELETE MODAL
   const handleSelectEvent = (event) => {
     setSelectedApp(event.candidate);
     setSelectedEventId(event.id);
@@ -70,6 +65,7 @@ export default function CalendarView() {
     setShowModal(true);
   };
 
+  // INSTANT DELETE LOGIC
   const confirmDelete = async () => {
     if (!selectedEventId || !selectedApp) return;
     const [candId, idxStr] = selectedEventId.split('-');
@@ -77,27 +73,40 @@ export default function CalendarView() {
 
     setShowModal(false);
     
-    // Optimistic UI Update
+    // 1. Optimistic UI: Remove from screen immediately
     const previousEvents = [...events];
     setEvents(prev => prev.filter(e => e.id !== selectedEventId));
 
     try {
-      const { data: fresh } = await supabase.from('applicants').select('status_history').eq('id', candId).single();
-      const newHistory = [...(fresh?.status_history || [])];
-      newHistory.splice(idx, 1);
+      // 2. Background Sync
+      const { data: freshApp } = await supabase
+        .from('applicants')
+        .select('status_history')
+        .eq('id', candId)
+        .single();
 
-      const { error } = await supabase.from('applicants').update({ status_history: newHistory }).eq('id', candId);
+      const updatedHistory = [...(freshApp?.status_history || [])];
+      updatedHistory.splice(idx, 1);
+
+      const { error } = await supabase
+        .from('applicants')
+        .update({ status_history: updatedHistory })
+        .eq('id', candId);
+
       if (error) throw error;
-      fetchData(); 
+      fetchData(); // Background refresh to ensure indices match
     } catch (err) {
       console.error("Delete failed:", err);
-      setEvents(previousEvents); 
-      alert("Database Sync Failed. Ensure you have update permissions.");
+      setEvents(previousEvents); // Rollback on error
+      alert("Sync Failed: Check Supabase Update Permissions.");
     }
   };
 
+  // CREATE SCHEDULE LOGIC
   const handleFinalConfirm = async () => {
     if (!selectedApp) return;
+
+    // Lock to SGT (+08:00)
     const finalTimestamp = `${formDate}T${formTime}:00+08:00`;
     const updatedHistory = [...(selectedApp.status_history || []), { status: 'Interviewing', date: finalTimestamp }];
 
@@ -107,18 +116,31 @@ export default function CalendarView() {
     }).eq('id', selectedApp.id);
 
     if (error) {
-      alert("Database Error: Could not save schedule.");
+      alert("Database Error: Could not save.");
       return;
     }
 
-    // Google Calendar Naming: Interviewing: [Role] - [Name]
     const gDate = formDate.replace(/-/g, '');
     const gTime = formTime.replace(/:/g, '');
-    const resumeUrl = selectedApp.resume_metadata?.url || '';
+    const eventTitle = `Interviewing: ${selectedApp.job_role} - ${selectedApp.name}`;
+    const resumeUrl = selectedApp.resume_metadata?.url || 'No link';
+
+    const details = encodeURIComponent(
+      `CANDIDATE: ${selectedApp.name}\n` +
+      `ROLE: ${selectedApp.job_role}\n\n` +
+      `📄 RESUME: ${resumeUrl}`
+    );
+
+    const gCalUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE` +
+                    `&text=${encodeURIComponent(eventTitle)}` +
+                    `&dates=${gDate}T${gTime}00/${gDate}T${(parseInt(formTime.split(':')[0]) + 1).toString().padStart(2, '0')}${formTime.split(':')[1]}00` +
+                    `&details=${details}` +
+                    `&location=${encodeURIComponent(resumeUrl)}` +
+                    `&ctz=Asia/Singapore`;
     
-    window.open(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`Interviewing: ${selectedApp.job_role} - ${selectedApp.name}`)}&dates=${gDate}T${gTime}00/${gDate}T${(parseInt(formTime)+1).toString().padStart(2,'0')}${formTime.split(':')[1]}00&details=${encodeURIComponent('Resume: '+resumeUrl)}&location=${encodeURIComponent(resumeUrl)}&ctz=Asia/Singapore`, '_blank');
-    
+    window.open(gCalUrl, '_blank');
     setShowModal(false);
+    setSearchCandidate('');
     fetchData();
   };
 
@@ -130,10 +152,12 @@ export default function CalendarView() {
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-10 relative">
-      <div className="bg-white p-10 rounded-[4rem] shadow-xl border border-slate-50 flex justify-between items-center mb-10">
+      
+      {/* HEADER SECTION */}
+      <div className="bg-white p-10 rounded-[4rem] shadow-xl border border-slate-50 flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
         <div>
           <h1 className="text-4xl font-black text-slate-900 tracking-tighter italic">Scheduler</h1>
-          <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest mt-2">Locked to SGT (Singapore Time)</p>
+          <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest mt-2">Locked to Asia/Singapore (SGT)</p>
         </div>
         <button 
           onClick={() => { setIsDeleting(false); setSelectedApp(null); setStep(1); setShowModal(true); }} 
@@ -143,6 +167,7 @@ export default function CalendarView() {
         </button>
       </div>
 
+      {/* CALENDAR GRID */}
       <div className="bg-white p-8 rounded-[4rem] shadow-2xl border border-slate-50" style={{ height: '750px' }}>
         <Calendar 
           localizer={localizer} 
@@ -158,33 +183,50 @@ export default function CalendarView() {
           onSelectEvent={handleSelectEvent}
           defaultView="week"
           eventPropGetter={(event) => ({
-            style: { backgroundColor: event.type === 'Hired' ? '#059669' : '#3b82f6', borderRadius: '14px', border: 'none', padding: '6px', fontSize: '11px', fontWeight: '900' }
+            style: { 
+              backgroundColor: event.type === 'Hired' ? '#059669' : '#3b82f6', 
+              borderRadius: '12px', 
+              border: 'none', 
+              padding: '6px', 
+              fontSize: '11px', 
+              fontWeight: '900'
+            }
           })}
         />
       </div>
 
+      {/* MODAL */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md z-[100] flex items-center justify-center p-6">
           <div className="bg-white w-full max-w-lg rounded-[4rem] shadow-2xl overflow-hidden animate-in zoom-in duration-100">
+            
             <div className={`p-10 text-white flex justify-between items-center ${isDeleting ? 'bg-rose-600' : 'bg-slate-900'}`}>
-              <h3 className="text-2xl font-black italic">{isDeleting ? 'Delete Schedule?' : step === 1 ? 'Step 1: Who?' : 'Step 2: When?'}</h3>
+              <h3 className="text-2xl font-black italic">
+                {isDeleting ? 'Delete Schedule?' : step === 1 ? 'Step 1: Who?' : 'Step 2: When?'}
+              </h3>
               <button onClick={() => setShowModal(false)} className="text-2xl font-bold opacity-40 hover:opacity-100">✕</button>
             </div>
+
             <div className="p-10">
               {isDeleting ? (
+                /* DELETE UI */
                 <div className="space-y-6 text-center">
-                  <p className="font-bold text-slate-600 italic">Remove interview for <br/><span className="text-rose-600 text-2xl font-black underline decoration-4 underline-offset-4 decoration-rose-200">{selectedApp?.name}</span>?</p>
+                  <p className="font-bold text-slate-600 italic leading-relaxed">
+                    Remove interview for <br/>
+                    <span className="text-rose-600 text-2xl font-black underline decoration-4 underline-offset-4">{selectedApp?.name}</span>?
+                  </p>
                   <div className="flex gap-4 pt-4">
                     <button onClick={() => setShowModal(false)} className="flex-1 py-4 bg-slate-100 rounded-2xl font-black text-[10px] uppercase text-slate-400">Cancel</button>
                     <button onClick={confirmDelete} className="flex-1 py-4 bg-rose-600 text-white rounded-2xl font-black text-[10px] uppercase shadow-lg active:scale-95 transition-all">Yes, Delete</button>
                   </div>
                 </div>
               ) : step === 1 ? (
+                /* CREATE STEP 1: SELECT CANDIDATE */
                 <div className="space-y-4">
                   <input 
                     type="text" 
-                    placeholder="Search candidate name..." 
-                    className="w-full p-5 bg-slate-50 rounded-[2rem] font-bold text-sm mb-4 outline-none border focus:border-blue-500 shadow-inner" 
+                    placeholder="Search candidate..." 
+                    className="w-full p-5 bg-slate-50 rounded-[1.8rem] font-bold text-sm mb-4 outline-none border focus:border-blue-500 shadow-inner" 
                     value={searchCandidate} 
                     onChange={(e) => setSearchCandidate(e.target.value)} 
                   />
@@ -192,19 +234,28 @@ export default function CalendarView() {
                     {applicants
                       .filter(a => !['Blacklisted', 'Failed Interview', 'Resigned'].includes(a.status) && a.name.toLowerCase().includes(searchCandidate.toLowerCase()))
                       .map(app => (
-                        <button key={app.id} onClick={() => { setSelectedApp(app); setStep(2); }} className="w-full text-left p-5 hover:bg-blue-50 rounded-[2rem] border border-slate-50 flex items-center justify-between group transition-all">
-                          <div><div className="font-black text-slate-800 text-lg group-hover:text-blue-600">{app.name}</div><div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{app.job_role}</div></div>
+                        <button 
+                          key={app.id} 
+                          onClick={() => { setSelectedApp(app); setStep(2); }} 
+                          className="w-full text-left p-6 hover:bg-blue-50 rounded-[2rem] border border-slate-50 flex items-center justify-between group transition-all"
+                        >
+                          <div>
+                            <div className="font-black text-slate-800 text-lg group-hover:text-blue-600">{app.name}</div>
+                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{app.job_role}</div>
+                          </div>
                           <span className="text-blue-500 font-black opacity-0 group-hover:opacity-100 transition-all">SELECT →</span>
                         </button>
                     ))}
                   </div>
                 </div>
               ) : (
-                <div className="space-y-8 animate-in slide-in-from-right-4">
+                /* CREATE STEP 2: SELECT TIME */
+                <div className="space-y-8 animate-in slide-in-from-right-4 duration-200">
                   <div className="bg-slate-50 p-6 rounded-[2.5rem] border border-slate-100">
                     <div className="text-xl font-black text-slate-800">{selectedApp?.name}</div>
                     <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{selectedApp?.job_role}</div>
                   </div>
+                  
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <label className="text-[9px] font-black uppercase text-slate-400 ml-4">Date</label>
@@ -215,9 +266,10 @@ export default function CalendarView() {
                       <input type="time" className="w-full p-5 bg-slate-50 rounded-[2rem] font-bold shadow-inner border-none outline-none" value={formTime} onChange={e => setFormTime(e.target.value)} />
                     </div>
                   </div>
+
                   <div className="flex gap-4 pt-6">
                     <button onClick={() => setStep(1)} className="flex-1 py-5 bg-slate-50 text-slate-400 rounded-[2rem] font-black text-[11px] uppercase tracking-widest">Back</button>
-                    <button onClick={handleFinalConfirm} className="flex-[2] py-5 bg-blue-600 text-white rounded-[2rem] font-black text-[11px] uppercase shadow-xl active:scale-95 transition-all">Confirm & Sync</button>
+                    <button onClick={handleFinalConfirm} className="flex-[2] py-5 bg-blue-600 text-white rounded-[2rem] font-black text-[11px] uppercase tracking-widest shadow-xl active:scale-95 transition-all">Confirm & Sync</button>
                   </div>
                 </div>
               )}
