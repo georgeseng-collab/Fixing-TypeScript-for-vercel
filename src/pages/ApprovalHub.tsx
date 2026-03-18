@@ -22,7 +22,7 @@ export default function ApprovalHub() {
     manager: 'Wei Zhi',
     department: 'Sales',
     scheduleKey: "Sales (Fixed)",
-    proposedSal: 0, // Will be set on candidate change
+    proposedSal: 0, 
     proposedAllowance: 0,
     monthsPaid: 12,
     source: 'Fastjobs',
@@ -46,9 +46,10 @@ export default function ApprovalHub() {
   useEffect(() => { fetchData(); }, []);
 
   const fetchData = async () => {
+    // CRITICAL: Ensure these column names match your Supabase 'applicants' table exactly
     const { data: apps } = await supabase.from('applicants')
-      .select('id, name, email, job_role, current_salary, last_drawn_salary, expected_salary, offered_salary')
-      .in('status', ['Offered', 'Offer Accepted'])
+      .select('*') 
+      .in('status', ['Offered', 'Offer Accepted', 'Interviewing'])
       .order('name');
     
     const { data: team } = await supabase.from('team_members').select('name, email').order('name');
@@ -64,7 +65,7 @@ export default function ApprovalHub() {
     setSelectedId(id);
     const app = applicants.find(a => a.id === id);
     if (app) {
-      // AUTO-SYNC: Set proposed salary to offered_salary
+      // PROPOSED: Auto-set to offered_salary
       setDetails(prev => ({...prev, proposedSal: app.offered_salary || 0 }));
     }
   };
@@ -85,9 +86,13 @@ export default function ApprovalHub() {
 
   const n = (val) => Number(val) || 0;
   
-  // --- SYNCED MAPPING ---
-  const currentSal = n(selectedApp?.last_drawn_salary || selectedApp?.current_salary);
-  const expectedSal = n(selectedApp?.expected_salary); // AUTO-PULLED FROM DB
+  // --- ROBUST DATA MAPPING WITH FALLBACKS ---
+  // If last_drawn_salary is empty, it checks current_salary
+  const currentSal = n(selectedApp?.last_drawn_salary || selectedApp?.current_salary || 0);
+  
+  // If expected_salary is empty, it checks salary_expectation
+  const expectedSal = n(selectedApp?.expected_salary || selectedApp?.salary_expectation || 0);
+  
   const proposedSal = n(details.proposedSal);
   const proposedAllow = n(details.proposedAllowance);
   const months = n(details.monthsPaid);
@@ -127,7 +132,6 @@ export default function ApprovalHub() {
 
   return (
     <div className="max-w-[1600px] mx-auto px-8 py-10 pb-40 text-slate-900">
-      {/* HEADER SECTION */}
       <div className="flex justify-between items-end mb-12 border-b-[10px] border-slate-900 pb-10">
         <div>
           <h1 className="text-7xl font-black uppercase italic tracking-tighter text-slate-900 leading-none">Approval Hub</h1>
@@ -153,21 +157,20 @@ export default function ApprovalHub() {
                   <option value="">Choose Candidate...</option>
                   {applicants.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
+                {selectedApp && (
+                  <div className="ml-4 mt-2 space-y-1">
+                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">DB Last Drawn: ${selectedApp.last_drawn_salary || selectedApp.current_salary || '0'}</p>
+                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">DB Expected: ${selectedApp.expected_salary || selectedApp.salary_expectation || '0'}</p>
+                  </div>
+                )}
               </div>
 
-              {/* CC TEAM MEMBERS SECTION */}
               <div className="space-y-1 p-4 bg-slate-50 rounded-3xl border-2 border-slate-100">
                 <label className="text-[9px] font-black uppercase text-slate-400 italic block mb-2 tracking-widest">CC Additional Team</label>
                 <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto no-scrollbar">
                   {teamMembers.map(m => (
-                    <button
-                      key={m.email}
-                      onClick={() => toggleCC(m.email)}
-                      className={`px-3 py-2 rounded-xl border-2 text-[9px] font-black uppercase transition-all ${
-                        selectedCC.includes(m.email) 
-                          ? 'bg-slate-900 text-white border-slate-900 shadow-md' 
-                          : 'bg-white text-slate-400 border-slate-200 hover:border-slate-900'
-                      }`}
+                    <button key={m.email} onClick={() => toggleCC(m.email)}
+                      className={`px-3 py-2 rounded-xl border-2 text-[9px] font-black uppercase transition-all ${selectedCC.includes(m.email) ? 'bg-slate-900 text-white border-slate-900 shadow-md' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-900'}`}
                     >
                       {m.name}
                     </button>
@@ -177,7 +180,7 @@ export default function ApprovalHub() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className={labelClass}>Proposed Sal (Editable)</label>
+                  <label className={labelClass}>Proposed Sal (Offered)</label>
                   <input className={`${inputClass} bg-blue-50 text-blue-600`} type="number" value={details.proposedSal} onChange={e => setDetails({...details, proposedSal: e.target.value})} />
                 </div>
                 <div className="space-y-1">
@@ -186,19 +189,21 @@ export default function ApprovalHub() {
                 </div>
               </div>
 
-              {/* ... Rest of the inputs (Dept, Source, Manager, Probation) ... */}
+              <div className="space-y-1">
+                <label className={labelClass}>Working Hours Schedule</label>
+                <select className={selectClass} value={details.scheduleKey} onChange={e => setDetails({...details, scheduleKey: e.target.value})}>
+                  {Object.keys(schedules).map(k => <option key={k} value={k}>{k}</option>)}
+                </select>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className={labelClass}>Dept</label>
-                  <select className={selectClass} value={details.department} onChange={e => setDetails({...details, department: e.target.value})}>
-                    {departments.map(d => <option key={d} value={d}>{d}</option>)}
-                  </select>
+                  <label className={labelClass}>Manager</label>
+                  <input className={inputClass} placeholder="Reporting To" value={details.manager} onChange={e => setDetails({...details, manager: e.target.value})} />
                 </div>
                 <div className="space-y-1">
-                  <label className={labelClass}>Source</label>
-                  <select className={selectClass} value={details.source} onChange={e => setDetails({...details, source: e.target.value})}>
-                    {sources.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
+                  <label className={labelClass}>Probation</label>
+                  <input className={inputClass} value={details.probation} onChange={e => setDetails({...details, probation: e.target.value})} />
                 </div>
               </div>
             </div>
