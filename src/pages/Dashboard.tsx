@@ -19,7 +19,8 @@ export default function Dashboard() {
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [activeApp, setActiveApp] = useState(null);
   const [modalType, setModalType] = useState(''); 
-  const [formData, setFormData] = useState({ status: '', remarks: '', date: '' });
+  // ADDED: offered_salary to formData state
+  const [formData, setFormData] = useState({ status: '', remarks: '', date: '', offered_salary: '' });
 
   const stages = ['Applied', 'Interviewing', 'Offered', 'Offer Accepted', 'Hired'];
 
@@ -38,20 +39,24 @@ export default function Dashboard() {
 
   useEffect(() => { fetchData(); }, []);
 
-  const updateStatus = async (id, status, remarks, date) => {
+  // UPDATED: Now handles offered_salary update
+  const updateStatus = async (id, status, remarks, date, offered_salary) => {
     try {
       const { data: currentApp } = await supabase.from('applicants').select('status_history').eq('id', id).single();
       const historyEntry = { 
         status, 
         date: new Date().toISOString(), 
         remarks: remarks || "Status Updated", 
-        leaving_date: date || null 
+        leaving_date: date || null,
+        offered_salary: offered_salary || null 
       };
       const updatedHistory = [...(currentApp?.status_history || []), historyEntry];
       const updatePayload = { status, status_history: updatedHistory };
 
       if (remarks) updatePayload.remarks = remarks;
       if (date) updatePayload.resignation_date = date;
+      // Update the main offered_salary field in the database
+      if (offered_salary) updatePayload.offered_salary = offered_salary;
 
       const { error } = await supabase.from('applicants').update(updatePayload).eq('id', id);
       if (error) throw error;
@@ -65,16 +70,22 @@ export default function Dashboard() {
   const handleStatusSelect = (app, newStatus) => {
     setActiveApp(app);
     const today = new Date().toISOString().split('T')[0];
-    if (['Blacklisted', 'Rejected Offer', 'Failed Interview'].includes(newStatus)) {
+    
+    // NEW: Intercept 'Offered' to show salary prompt
+    if (newStatus === 'Offered') {
+      setModalType('offer');
+      setFormData({ status: newStatus, remarks: '', date: '', offered_salary: app.offered_salary || '' });
+      setShowStatusModal(true);
+    } else if (['Blacklisted', 'Rejected Offer', 'Failed Interview'].includes(newStatus)) {
       setModalType('remarks');
-      setFormData({ status: newStatus, remarks: '', date: '' });
+      setFormData({ status: newStatus, remarks: '', date: '', offered_salary: '' });
       setShowStatusModal(true);
     } else if (newStatus === 'Resigned') {
       setModalType('resigned');
-      setFormData({ status: newStatus, remarks: '', date: today });
+      setFormData({ status: newStatus, remarks: '', date: today, offered_salary: '' });
       setShowStatusModal(true);
     } else {
-      updateStatus(app.id, newStatus, '', '');
+      updateStatus(app.id, newStatus, '', '', '');
     }
   };
 
@@ -116,7 +127,6 @@ export default function Dashboard() {
 
   const filtered = applicants.filter(a => {
     const s = searchTerm.toLowerCase();
-    // UNIVERSAL SEARCH LOGIC
     const matchesSearch = 
       (a.name || "").toLowerCase().includes(s) || 
       (a.job_role || "").toLowerCase().includes(s) || 
@@ -130,14 +140,30 @@ export default function Dashboard() {
   });
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-12 space-y-8 pb-32 relative">
+    <div className="max-w-7xl mx-auto px-6 py-12 space-y-8 pb-32 relative text-slate-900">
       
       {/* MODALS */}
       {showStatusModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-4">
           <div className="bg-white border-8 border-slate-900 w-full max-w-lg rounded-[3rem] shadow-[20px_20px_0px_0px_rgba(0,0,0,1)] p-10 space-y-6">
-            <h2 className="text-4xl font-black uppercase italic tracking-tighter">Status Update</h2>
+            <h2 className="text-4xl font-black uppercase italic tracking-tighter">
+              {modalType === 'offer' ? '💸 Monthly Offer' : 'Status Update'}
+            </h2>
             <div className="space-y-4">
+              {/* NEW: Offer Salary Input field */}
+              {modalType === 'offer' && (
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase ml-2 text-blue-600 italic">Confirmed Salary Amount ($)</label>
+                  <input 
+                    type="number" 
+                    placeholder="e.g. 5500"
+                    className="w-full p-5 bg-blue-50 border-4 border-slate-900 rounded-2xl font-black text-2xl outline-none" 
+                    value={formData.offered_salary} 
+                    onChange={e => setFormData({...formData, offered_salary: e.target.value})} 
+                  />
+                </div>
+              )}
+
               {modalType === 'resigned' && (
                 <div className="space-y-2">
                   <label className="text-[10px] font-black uppercase ml-2 text-slate-400">Date of Leaving</label>
@@ -151,7 +177,12 @@ export default function Dashboard() {
             </div>
             <div className="flex gap-4">
               <button onClick={() => setShowStatusModal(false)} className="flex-1 py-5 border-4 border-slate-900 rounded-2xl font-black uppercase text-xs">Cancel</button>
-              <button onClick={() => updateStatus(activeApp.id, formData.status, formData.remarks, formData.date)} className="flex-1 py-5 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs shadow-[4px_4px_0px_0px_rgba(59,130,246,1)]">Confirm</button>
+              <button 
+                onClick={() => updateStatus(activeApp.id, formData.status, formData.remarks, formData.date, formData.offered_salary)} 
+                className="flex-1 py-5 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs shadow-[4px_4px_0px_0px_rgba(59,130,246,1)]"
+              >
+                Confirm
+              </button>
             </div>
           </div>
         </div>
@@ -169,6 +200,8 @@ export default function Dashboard() {
                     <span className="text-xl font-black uppercase tracking-tighter italic">{h.status}</span>
                     <span className="text-[10px] font-bold text-white/30">{new Date(h.date).toLocaleDateString()}</span>
                   </div>
+                  {/* Show salary in history if it exists */}
+                  {h.offered_salary && <p className="text-xs font-black text-emerald-400 mb-1 uppercase tracking-widest">Offered Salary: ${h.offered_salary}</p>}
                   {h.remarks && <p className="text-sm font-medium text-white/60 bg-white/5 p-4 rounded-2xl italic">"{h.remarks}"</p>}
                 </div>
               ))}
@@ -178,7 +211,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Header - REFRESH BUTTON REMOVED */}
+      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b-8 border-slate-900 pb-8">
         <h1 className="text-7xl font-black text-slate-900 tracking-tighter italic uppercase leading-none">Dashboard</h1>
         <input 
@@ -209,7 +242,13 @@ export default function Dashboard() {
           return (
             <div key={app.id} className="bg-white rounded-[4rem] border-4 border-slate-900 shadow-[14px_14px_0px_0px_rgba(15,23,42,1)] overflow-hidden flex flex-col transition-all hover:-translate-y-2">
               
-              <div className={`p-10 pb-8 ${getStatusTheme(app.status)} border-b-4 border-slate-900`}>
+              <div className={`p-10 pb-8 ${getStatusTheme(app.status)} border-b-4 border-slate-900 relative`}>
+                  {/* NEW: Floating Emerald Badge for Offered Salary */}
+                  {app.offered_salary && !isArchived && (
+                    <div className="absolute top-6 right-6 bg-emerald-400 border-2 border-slate-900 px-3 py-1 rounded-full text-[10px] font-black text-slate-900 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                      OFFER: ${app.offered_salary}
+                    </div>
+                  )}
                   <div className="flex-grow">
                     {editId === app.id ? (
                       <div className="space-y-2">
@@ -226,7 +265,6 @@ export default function Dashboard() {
               </div>
 
               <div className="p-10 space-y-8 flex-grow">
-                {/* Contacts (Editable) */}
                 <div className="space-y-3">
                   {editId === app.id ? (
                     <div className="space-y-2">
@@ -314,7 +352,6 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                {/* Action Icons */}
                 <div className="flex gap-4">
                   <a href={app.resume_metadata?.url} target="_blank" className="flex-1 flex justify-center items-center bg-white border-4 border-slate-900 py-5 rounded-[2rem] shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:bg-slate-900 hover:text-white transition-all text-2xl">📄</a>
                   <button onClick={() => { setActiveApp(app); setShowHistoryModal(true); }} className="flex-1 flex justify-center items-center bg-slate-50 rounded-[2rem] border-4 border-slate-900 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:bg-blue-500 hover:text-white transition-all text-2xl">🕒</button>
