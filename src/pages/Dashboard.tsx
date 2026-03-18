@@ -10,11 +10,9 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('All');
   
-  // Edit State
   const [editId, setEditId] = useState(null);
   const [editData, setEditData] = useState({});
 
-  // Modals State
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [activeApp, setActiveApp] = useState(null);
@@ -38,6 +36,30 @@ export default function Dashboard() {
 
   useEffect(() => { fetchData(); }, []);
 
+  const updateStatus = async (id, status, remarks, date) => {
+    try {
+      const { data: currentApp } = await supabase.from('applicants').select('status_history').eq('id', id).single();
+      const historyEntry = { 
+        status, 
+        date: new Date().toISOString(), 
+        remarks: remarks || "Status Updated", 
+        leaving_date: date || null 
+      };
+      const updatedHistory = [...(currentApp?.status_history || []), historyEntry];
+      const updatePayload = { status, status_history: updatedHistory };
+
+      if (remarks) updatePayload.remarks = remarks;
+      if (date) updatePayload.resignation_date = date;
+
+      const { error } = await supabase.from('applicants').update(updatePayload).eq('id', id);
+      if (error) throw error;
+
+      setShowStatusModal(false);
+      setActiveApp(null);
+      fetchData();
+    } catch (err) { alert("Update failed: " + err.message); }
+  };
+
   const handleStatusSelect = (app, newStatus) => {
     setActiveApp(app);
     const today = new Date().toISOString().split('T')[0];
@@ -52,22 +74,6 @@ export default function Dashboard() {
     } else {
       updateStatus(app.id, newStatus, '', '');
     }
-  };
-
-  const updateStatus = async (id, status, remarks, date) => {
-    const { data: current } = await supabase.from('applicants').select('status_history').eq(id).single();
-    const historyEntry = { status, date: new Date().toISOString(), remarks: remarks || null, leaving_date: date || null };
-    const updatedHistory = [...(current?.status_history || []), historyEntry];
-
-    await supabase.from('applicants').update({ 
-      status, 
-      remarks: remarks || activeApp?.remarks,
-      resignation_date: date || null,
-      status_history: updatedHistory
-    }).eq('id', id);
-    
-    setShowStatusModal(false);
-    fetchData();
   };
 
   const toggleContract = async (id, currentVal) => {
@@ -87,7 +93,7 @@ export default function Dashboard() {
       'Offer Accepted': 'bg-blue-600 text-white',
       'Offered': 'bg-purple-600 text-white',
       'Interviewing': 'bg-amber-500 text-white',
-      'Applied': 'bg-blue-600 text-white',
+      'Applied': 'bg-slate-900 text-white',
       'Resigned': 'bg-orange-700 text-white',
       'Blacklisted': 'bg-slate-900 text-white',
       'Failed Interview': 'bg-slate-500 text-white',
@@ -107,7 +113,7 @@ export default function Dashboard() {
   };
 
   const filtered = applicants.filter(a => {
-    const matchesSearch = (a.name || "").toLowerCase().includes(searchTerm.toLowerCase()) || (a.job_role || "").toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = (a.name || "").toLowerCase().includes(searchTerm.toLowerCase());
     const isArchived = ['Failed Interview', 'Blacklisted', 'Resigned', 'Rejected Offer'].includes(a.status);
     if (filterStatus === 'Archive') return matchesSearch && isArchived;
     if (filterStatus === 'All') return matchesSearch && !isArchived;
@@ -117,21 +123,21 @@ export default function Dashboard() {
   return (
     <div className="max-w-7xl mx-auto px-6 py-12 space-y-8 pb-32 relative">
       
-      {/* MODAL INTERFACES */}
+      {/* STATUS CHANGE MODAL */}
       {showStatusModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-4">
           <div className="bg-white border-8 border-slate-900 w-full max-w-lg rounded-[3rem] shadow-[20px_20px_0px_0px_rgba(0,0,0,1)] p-10 space-y-6">
-            <h2 className="text-4xl font-black uppercase italic tracking-tighter">Status Update</h2>
+            <h2 className="text-4xl font-black uppercase italic tracking-tighter italic">Status Update</h2>
             <div className="space-y-4">
               {modalType === 'resigned' && (
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase ml-2 text-slate-400 italic">Date of Leaving</label>
+                  <label className="text-[10px] font-black uppercase ml-2 text-slate-400">Date of Leaving</label>
                   <input type="date" className="w-full p-5 bg-slate-50 border-4 border-slate-900 rounded-2xl font-bold" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
                 </div>
               )}
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase ml-2 text-slate-400 italic">Reason / Remarks</label>
-                <textarea rows="4" className="w-full p-5 bg-slate-50 border-4 border-slate-900 rounded-2xl font-bold outline-none" placeholder="Provide details..." value={formData.remarks} onChange={e => setFormData({...formData, remarks: e.target.value})} />
+                <textarea rows="4" className="w-full p-5 bg-slate-50 border-4 border-slate-900 rounded-2xl font-bold outline-none" value={formData.remarks} onChange={e => setFormData({...formData, remarks: e.target.value})} />
               </div>
             </div>
             <div className="flex gap-4">
@@ -142,17 +148,18 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* HISTORY MODAL */}
       {showHistoryModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/95 backdrop-blur-md p-4">
-          <div className="bg-slate-900 border-8 border-white/10 w-full max-w-2xl rounded-[4rem] shadow-[30px_30px_60px_rgba(0,0,0,0.5)] p-12 relative overflow-hidden">
-            <h2 className="text-5xl font-black uppercase italic tracking-tighter text-white mb-2 leading-none">Journey Log</h2>
+          <div className="bg-slate-900 border-8 border-white/10 w-full max-w-2xl rounded-[4rem] shadow-[30px_30px_60px_rgba(0,0,0,0.5)] p-12 relative overflow-hidden text-white">
+            <h2 className="text-5xl font-black uppercase italic tracking-tighter mb-2">Journey Log</h2>
             <p className="text-blue-400 font-black uppercase tracking-[0.3em] text-[10px] mb-10 underline italic">{activeApp?.name}</p>
-            <div className="max-h-[400px] overflow-y-auto space-y-6 pr-4 custom-scrollbar">
+            <div className="max-h-[400px] overflow-y-auto space-y-6 pr-4">
               {(activeApp?.status_history || []).map((h, i) => (
                 <div key={i} className="relative pl-8 border-l-4 border-white/10 py-2">
                   <div className="absolute -left-[10px] top-4 w-4 h-4 rounded-full bg-blue-500" />
                   <div className="flex justify-between items-center mb-2">
-                    <span className="text-xl font-black uppercase text-white tracking-tighter italic">{h.status}</span>
+                    <span className="text-xl font-black uppercase tracking-tighter italic">{h.status}</span>
                     <span className="text-[10px] font-bold text-white/30">{new Date(h.date).toLocaleDateString()}</span>
                   </div>
                   {h.remarks && <p className="text-sm font-medium text-white/60 bg-white/5 p-4 rounded-2xl italic">"{h.remarks}"</p>}
@@ -168,12 +175,12 @@ export default function Dashboard() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b-8 border-slate-900 pb-8">
         <h1 className="text-7xl font-black text-slate-900 tracking-tighter italic uppercase leading-none">Dashboard</h1>
         <div className="flex gap-4">
-           <button onClick={() => fetchData()} className="p-5 bg-slate-100 border-4 border-slate-900 rounded-2xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-slate-200 transition-all font-black text-xl">↻</button>
+           <button onClick={() => fetchData()} className="p-5 bg-slate-100 border-4 border-slate-900 rounded-2xl font-black text-xl">↻</button>
            <input type="text" placeholder="Search..." className="w-full md:w-80 bg-white px-8 py-5 rounded-[2.5rem] border-4 border-slate-900 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] font-bold text-sm outline-none" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
         </div>
       </div>
 
-      {/* Clickable Stats Bar */}
+      {/* Stats Bar */}
       <div className="flex flex-wrap gap-3">
         {Object.entries(stats).map(([label, count]) => (
           <button key={label} onClick={() => setFilterStatus(label)} className={`flex-1 min-w-[140px] p-6 rounded-[2rem] border-4 border-slate-900 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all ${filterStatus === label ? 'bg-slate-900 text-white shadow-none translate-x-1 translate-y-1' : 'bg-white text-slate-900'}`}>
@@ -186,36 +193,35 @@ export default function Dashboard() {
       {/* Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12">
         {filtered.map(app => {
-          const isFullyReady = offerHistory.includes(app.id) && approvalHistory.includes(app.id) && app.contract_generated;
-          const isArchivedView = ['Failed Interview', 'Blacklisted', 'Resigned', 'Rejected Offer'].includes(app.status);
+          const isReady = offerHistory.includes(app.id) && approvalHistory.includes(app.id) && app.contract_generated;
+          const isArchived = ['Failed Interview', 'Blacklisted', 'Resigned', 'Rejected Offer'].includes(app.status);
 
           return (
             <div key={app.id} className="bg-white rounded-[4rem] border-4 border-slate-900 shadow-[14px_14px_0px_0px_rgba(15,23,42,1)] overflow-hidden flex flex-col transition-all">
               
-              {/* Card Header (Editable) */}
               <div className={`p-10 pb-8 ${getStatusTheme(app.status)} border-b-4 border-slate-900`}>
                   <div className="flex-grow">
                     {editId === app.id ? (
                       <div className="space-y-2">
-                        <input className="w-full text-xl font-black bg-white/20 rounded-xl px-3 py-1 outline-none text-white border border-white/40" value={editData.name} onChange={e => setEditData({...editData, name: e.target.value})} placeholder="Full Name" />
-                        <input className="w-full text-[11px] font-black uppercase bg-white/10 rounded-xl px-3 py-1 outline-none text-white/80" value={editData.job_role} onChange={e => setEditData({...editData, job_role: e.target.value})} placeholder="Job Role" />
+                        <input className="w-full text-xl font-black bg-white/20 rounded-xl px-3 py-1 outline-none text-white" value={editData.name} onChange={e => setEditData({...editData, name: e.target.value})} />
+                        <input className="w-full text-[11px] font-black uppercase bg-white/10 rounded-xl px-3 py-1 outline-none text-white/80" value={editData.job_role} onChange={e => setEditData({...editData, job_role: e.target.value})} />
                       </div>
                     ) : (
                       <>
                         <h2 className="text-3xl font-black tracking-tighter italic uppercase break-words leading-tight mb-1">{app.name}</h2>
-                        <p className="text-[11px] font-black uppercase opacity-70 mt-1">{isArchivedView ? `Archive: ${app.status}` : app.job_role}</p>
+                        <p className="text-[11px] font-black uppercase opacity-70 mt-1">{isArchived ? `Archive: ${app.status}` : app.job_role}</p>
                       </>
                     )}
                   </div>
               </div>
 
               <div className="p-10 space-y-8 flex-grow">
-                {/* Contacts (Editable) */}
+                {/* Contacts */}
                 <div className="space-y-3">
                   {editId === app.id ? (
                     <div className="space-y-2">
-                      <input className="w-full p-4 bg-slate-50 border-2 border-slate-900 rounded-2xl font-bold text-xs" value={editData.email} onChange={e => setEditData({...editData, email: e.target.value})} placeholder="Email Address" />
-                      <input className="w-full p-4 bg-slate-50 border-2 border-slate-900 rounded-2xl font-bold text-xs" value={editData.phone} onChange={e => setEditData({...editData, phone: e.target.value})} placeholder="Phone Number" />
+                      <input className="w-full p-4 bg-slate-50 border-2 border-slate-900 rounded-2xl font-bold text-xs" value={editData.email} onChange={e => setEditData({...editData, email: e.target.value})} />
+                      <input className="w-full p-4 bg-slate-50 border-2 border-slate-900 rounded-2xl font-bold text-xs" value={editData.phone} onChange={e => setEditData({...editData, phone: e.target.value})} />
                     </div>
                   ) : (
                     <>
@@ -229,11 +235,10 @@ export default function Dashboard() {
                   )}
                 </div>
 
-                {/* ARCHIVE CONTENT */}
-                {isArchivedView ? (
+                {isArchived ? (
                   <div className="bg-slate-900 p-8 rounded-[3.5rem] space-y-5 text-white shadow-inner">
                     {app.status === 'Resigned' && <div className="space-y-1"><span className="text-[9px] font-black text-blue-400 uppercase italic">Date of Leaving</span><p className="text-sm font-bold text-rose-400 italic">{app.resignation_date || 'N/A'}</p></div>}
-                    <div className="space-y-1"><span className="text-[9px] font-black text-blue-400 uppercase italic">Reason / Remarks</span><p className="text-xs italic opacity-80 leading-relaxed font-medium line-clamp-4">"{app.remarks || 'No remarks provided.'}"</p></div>
+                    <div className="space-y-1"><span className="text-[9px] font-black text-blue-400 uppercase italic">Reason / Remarks</span><p className="text-xs italic opacity-80 leading-relaxed font-medium line-clamp-4">"{app.remarks || 'No remarks.'}"</p></div>
                   </div>
                 ) : (
                   <div className="space-y-6">
@@ -254,26 +259,43 @@ export default function Dashboard() {
                       </div>
                     )}
 
-                    {app.status === 'Offer Accepted' && isFullyReady ? (
-                      <button onClick={() => updateStatus(app.id, 'Hired', 'Onboarded via Dashboard', '')} className="w-full py-8 bg-emerald-500 text-white rounded-[2.5rem] border-4 border-slate-900 font-black uppercase tracking-[0.2em] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] animate-pulse hover:bg-slate-900 transition-all">🎉 Onboard Now</button>
+                    {app.status === 'Offer Accepted' && isReady ? (
+                      <button 
+                        onClick={() => updateStatus(app.id, 'Hired', 'Successfully Onboarded', '')} 
+                        className="w-full py-8 bg-emerald-500 text-white rounded-[2.5rem] border-4 border-slate-900 font-black uppercase tracking-[0.2em] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] animate-pulse hover:bg-slate-900 transition-all"
+                      >
+                        🎉 Onboard Now
+                      </button>
                     ) : (
                       <select value={app.status} onChange={e => handleStatusSelect(app, e.target.value)} className={`w-full py-6 rounded-[2.5rem] text-[12px] font-black uppercase border-4 border-slate-900 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] text-center appearance-none cursor-pointer transition-all ${getStatusTheme(app.status)}`}>
+                        {/* THE LOGIC YOU ASKED FOR IS HERE */}
                         {app.status === 'Hired' ? (
-                          <><option value="Hired">Hired</option><option value="Offer Accepted">Move Back</option><option value="Resigned">Resigned</option></>
+                          <>
+                            <option value="Hired">Hired (Onboarded)</option>
+                            <option value="Offer Accepted">Move Back to Offer</option>
+                            <option value="Resigned">Resigned</option>
+                          </>
                         ) : (
-                          <>{stages.map(s => <option key={s} value={s}>{s}</option>)}<optgroup label="Archive"><option value="Failed Interview">Failed Interview</option><option value="Rejected Offer">Rejected Offer</option><option value="Blacklisted">Blacklisted</option></optgroup></>
+                          <>
+                            {stages.map(s => <option key={s} value={s}>{s}</option>)}
+                            <optgroup label="Archive">
+                              <option value="Failed Interview">Failed Interview</option>
+                              <option value="Rejected Offer">Rejected Offer</option>
+                              <option value="Blacklisted">Blacklisted</option>
+                            </optgroup>
+                          </>
                         )}
                       </select>
                     )}
                   </div>
                 )}
 
-                {/* Salaries (Editable) */}
+                {/* Salaries */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-slate-50 p-5 rounded-[1.5rem] border-2 border-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-center">
                     <span className="block text-[9px] font-black text-slate-400 uppercase mb-1 italic">Last Drawn</span>
                     {editId === app.id ? (
-                      <input className="w-full text-center bg-white border-2 border-slate-200 rounded-lg font-black py-1" value={editData.current_salary} onChange={e => setEditData({...editData, current_salary: e.target.value})} />
+                      <input className="w-full text-center bg-white border-2 border-slate-200 rounded-lg font-black py-1 text-xs" value={editData.current_salary} onChange={e => setEditData({...editData, current_salary: e.target.value})} />
                     ) : (
                       <span className="text-sm font-black text-slate-900">${app.current_salary || app.last_drawn_salary || '0'}</span>
                     )}
@@ -281,21 +303,17 @@ export default function Dashboard() {
                   <div className="bg-slate-50 p-5 rounded-[1.5rem] border-2 border-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-center">
                     <span className="block text-[9px] font-black text-slate-400 uppercase mb-1 italic text-blue-600">Expected</span>
                     {editId === app.id ? (
-                      <input className="w-full text-center bg-white border-2 border-slate-200 rounded-lg font-black py-1 text-blue-600" value={editData.expected_salary} onChange={e => setEditData({...editData, expected_salary: e.target.value})} />
+                      <input className="w-full text-center bg-white border-2 border-slate-200 rounded-lg font-black py-1 text-xs text-blue-600" value={editData.expected_salary} onChange={e => setEditData({...editData, expected_salary: e.target.value})} />
                     ) : (
                       <span className="text-sm font-black text-blue-600">${app.expected_salary || app.salary_expectation || '0'}</span>
                     )}
                   </div>
                 </div>
 
-                {/* BOTTOM ACTION ROW (ICON ONLY) */}
+                {/* Action Row */}
                 <div className="flex gap-4">
-                  <a href={app.resume_metadata?.url} target="_blank" className="flex-1 flex justify-center items-center bg-white border-4 border-slate-900 py-5 rounded-[2rem] shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:bg-slate-900 hover:text-white transition-all text-2xl">
-                    📄
-                  </a>
-                  <button onClick={() => { setActiveApp(app); setShowHistoryModal(true); }} className="flex-1 flex justify-center items-center bg-slate-50 rounded-[2rem] border-4 border-slate-900 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:bg-blue-500 hover:text-white transition-all text-2xl">
-                    🕒
-                  </button>
+                  <a href={app.resume_metadata?.url} target="_blank" className="flex-1 flex justify-center items-center bg-white border-4 border-slate-900 py-5 rounded-[2rem] shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:bg-slate-900 hover:text-white transition-all text-2xl">📄</a>
+                  <button onClick={() => { setActiveApp(app); setShowHistoryModal(true); }} className="flex-1 flex justify-center items-center bg-slate-50 rounded-[2rem] border-4 border-slate-900 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:bg-blue-500 hover:text-white transition-all text-2xl">🕒</button>
                   <button 
                     onClick={() => editId === app.id ? saveEdit() : (setEditId(app.id), setEditData(app))}
                     className={`flex-1 flex justify-center items-center rounded-[2rem] border-4 border-slate-900 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all text-2xl ${editId === app.id ? 'bg-emerald-500 text-white animate-pulse' : 'bg-white text-slate-900 hover:bg-slate-900 hover:text-white'}`}
