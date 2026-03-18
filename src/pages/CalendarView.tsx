@@ -9,7 +9,7 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 const locales = { 'en-US': enUS };
 const localizer = dateFnsLocalizer({ format, parse, startOfWeek, getDay, locales });
 
-// --- YOUR NEW UPDATED GOOGLE SCRIPT URL ---
+// --- YOUR GOOGLE SCRIPT URL ---
 const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzPtaJGgrcP6YQqNkbZz0J25iS7_FuXjPCzEtBex5jq-WrPKf9C867z3zhhH99NUheR/exec';
 
 export default function CalendarView() {
@@ -34,6 +34,7 @@ export default function CalendarView() {
       const { data, error } = await supabase.from('applicants').select('*');
       if (error) throw error;
       setApplicants(data || []);
+      
       const calendarEvents = (data || []).flatMap(app => 
         (app.status_history || [])
           .filter(h => h && (h.status === 'Interviewing' || h.status === 'Hired'))
@@ -46,34 +47,50 @@ export default function CalendarView() {
           }))
       );
       setEvents(calendarEvents);
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error("Fetch Error:", e); }
     finally { setLoading(false); }
   };
 
   useEffect(() => { fetchData(); }, []);
 
   const handleSave = async () => {
-    if (!selectedApp) return alert("Select a candidate");
+    if (!selectedApp) return alert("Select a candidate first");
     setIsSyncing(true);
 
     try {
       let base64File = "";
-      let fileName = "no_file";
+      let fileName = "resume.pdf";
       let contentType = "application/pdf";
 
-      // 1. Convert File to Base64 if exists
+      // --- SMART FILE RETRIEVAL ---
       if (resumeFile) {
+        // Option A: User uploaded a new file in the modal
         fileName = resumeFile.name;
         contentType = resumeFile.type;
         const reader = new FileReader();
-        const base64Promise = new Promise((resolve) => {
+        base64File = await new Promise((resolve) => {
           reader.onload = () => resolve(reader.result.split(',')[1]);
           reader.readAsDataURL(resumeFile);
         });
-        base64File = await base64Promise;
+      } else if (selectedApp.resume_metadata?.url) {
+        // Option B: No new file, so pull existing one from Supabase Storage
+        try {
+          const response = await fetch(selectedApp.resume_metadata.url);
+          const blob = await response.blob();
+          fileName = `${selectedApp.name.replace(/\s/g, '_')}_Resume.pdf`;
+          contentType = blob.type;
+          
+          base64File = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result.split(',')[1]);
+            reader.readAsDataURL(blob);
+          });
+        } catch (e) {
+          console.warn("Could not auto-retrieve resume from Supabase URL:", e);
+        }
       }
 
-      // 2. The "CORS-Bypass" Payload
+      // --- SEND TO GOOGLE SCRIPT ---
       const payload = JSON.stringify({
         name: selectedApp.name,
         role: selectedApp.job_role || "Candidate",
@@ -84,7 +101,6 @@ export default function CalendarView() {
         fileBase64: base64File
       });
 
-      // 3. Send to Google (Simple POST mode)
       await fetch(GOOGLE_SCRIPT_URL, {
         method: 'POST',
         mode: 'no-cors', 
@@ -92,7 +108,7 @@ export default function CalendarView() {
         body: payload
       });
 
-      // 4. Update Supabase
+      // --- UPDATE SUPABASE DATABASE ---
       const finalTimestamp = `${formDate}T${formTime}:00+08:00`;
       let updatedHistory = [...(selectedApp.status_history || [])];
 
@@ -108,12 +124,12 @@ export default function CalendarView() {
         status_history: updatedHistory 
       }).eq('id', selectedApp.id);
 
-      alert("Success! Request sent to Google Calendar. Please wait 10 seconds for the attachment to appear.");
+      alert("Success! Check your Google Calendar in a few moments.");
       setShowModal(false);
       setResumeFile(null);
       fetchData();
     } catch (err) {
-      alert("Error: " + err.message);
+      alert("Sync Error: " + err.message);
     } finally {
       setIsSyncing(false);
     }
@@ -131,7 +147,7 @@ export default function CalendarView() {
   };
 
   if (loading) return (
-    <div className="h-screen flex items-center justify-center">
+    <div className="h-screen flex items-center justify-center bg-white">
       <div className="font-black text-blue-600 text-6xl animate-pulse italic tracking-tighter">GENIEBOOK</div>
     </div>
   );
@@ -140,7 +156,12 @@ export default function CalendarView() {
     <div className="max-w-7xl mx-auto px-6 py-10 relative">
       <div className="bg-white p-10 rounded-[4rem] shadow-xl border border-slate-50 flex justify-between items-center mb-10">
         <h1 className="text-4xl font-black text-slate-900 italic tracking-tighter">Scheduler</h1>
-        <button onClick={() => { setIsManagementMode(false); setStep(1); setShowModal(true); }} className="bg-blue-600 text-white px-10 py-5 rounded-[2rem] font-black text-xs uppercase shadow-2xl hover:bg-blue-700 tracking-widest active:scale-95 transition-all">+ New Schedule</button>
+        <button 
+          onClick={() => { setIsManagementMode(false); setStep(1); setShowModal(true); }} 
+          className="bg-blue-600 text-white px-10 py-5 rounded-[2rem] font-black text-xs uppercase shadow-2xl hover:bg-blue-700 tracking-widest active:scale-95 transition-all"
+        >
+          + New Schedule
+        </button>
       </div>
 
       <div className="bg-white p-8 rounded-[4rem] shadow-2xl border border-slate-50" style={{ height: '750px' }}>
@@ -148,10 +169,22 @@ export default function CalendarView() {
           localizer={localizer} 
           events={events} 
           selectable 
-          onSelectEvent={(e) => { setSelectedApp(e.candidate); setSelectedEventId(e.id); setIsManagementMode(true); setStep(2); setShowModal(true); }}
-          onSelectSlot={({start}) => { setIsManagementMode(false); setFormDate(format(start, 'yyyy-MM-dd')); setFormTime(format(start, 'HH:mm')); setStep(1); setShowModal(true); }}
+          onSelectEvent={(e) => { 
+            setSelectedApp(e.candidate); 
+            setSelectedEventId(e.id); 
+            setIsManagementMode(true); 
+            setStep(2); 
+            setShowModal(true); 
+          }}
+          onSelectSlot={({start}) => { 
+            setIsManagementMode(false); 
+            setFormDate(format(start, 'yyyy-MM-dd')); 
+            setFormTime(format(start, 'HH:mm')); 
+            setStep(1); 
+            setShowModal(true); 
+          }}
           defaultView="week"
-          eventPropGetter={() => ({ style: { backgroundColor: '#3b82f6', borderRadius: '14px', border: 'none' } })}
+          eventPropGetter={() => ({ style: { backgroundColor: '#3b82f6', borderRadius: '14px', border: 'none', fontWeight: 'bold' } })}
         />
       </div>
 
@@ -174,23 +207,49 @@ export default function CalendarView() {
             <div className="p-10 space-y-6">
               {step === 1 ? (
                 <div className="space-y-4">
-                  <input type="text" placeholder="Search candidate..." className="w-full p-4 bg-slate-50 rounded-2xl font-bold outline-none border focus:border-blue-500" value={searchCandidate} onChange={e => setSearchCandidate(e.target.value)} />
-                  <div className="space-y-2 max-h-[300px] overflow-y-auto no-scrollbar">
-                    {applicants.filter(a => a.name.toLowerCase().includes(searchCandidate.toLowerCase())).map(app => (
-                      <button key={app.id} onClick={() => { setSelectedApp(app); setStep(2); }} className="w-full text-left p-6 hover:bg-blue-50 rounded-[2rem] border border-slate-50 flex justify-between group transition-all">
-                        <div><div className="font-black text-slate-800 text-lg group-hover:text-blue-600">{app.name}</div><div className="text-[10px] uppercase font-bold text-slate-400 tracking-widest">{app.job_role}</div></div>
-                        <span className="text-blue-500 font-black opacity-0 group-hover:opacity-100 transition-all">SELECT →</span>
-                      </button>
+                  <input 
+                    type="text" 
+                    placeholder="Search candidate..." 
+                    className="w-full p-5 bg-slate-50 rounded-[2rem] font-bold outline-none border focus:border-blue-500 shadow-inner" 
+                    value={searchCandidate} 
+                    onChange={e => setSearchCandidate(e.target.value)} 
+                  />
+                  <div className="space-y-2 max-h-[300px] overflow-y-auto no-scrollbar pr-1">
+                    {applicants
+                      .filter(a => a.name.toLowerCase().includes(searchCandidate.toLowerCase()))
+                      .map(app => (
+                        <button 
+                          key={app.id} 
+                          onClick={() => { setSelectedApp(app); setStep(2); }} 
+                          className="w-full text-left p-6 hover:bg-blue-50 rounded-[2rem] border border-slate-50 flex justify-between group transition-all"
+                        >
+                          <div>
+                            <div className="font-black text-slate-800 text-lg group-hover:text-blue-600 transition-colors">{app.name}</div>
+                            <div className="text-[10px] uppercase font-bold text-slate-400 tracking-widest">{app.job_role}</div>
+                          </div>
+                          <span className="text-blue-500 font-black opacity-0 group-hover:opacity-100 transition-all">SELECT →</span>
+                        </button>
                     ))}
                   </div>
                 </div>
               ) : (
-                <div className="space-y-6">
-                  <div className="bg-slate-50 p-6 rounded-[2.5rem] font-black text-slate-800 italic border border-slate-100">{selectedApp?.name}</div>
+                <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+                  <div className="bg-slate-50 p-6 rounded-[2.5rem] font-black text-slate-800 italic border border-slate-100">
+                    {selectedApp?.name}
+                    <div className="text-[10px] not-italic font-bold text-slate-400 uppercase tracking-widest mt-1">
+                      {selectedApp?.job_role} {selectedApp?.resume_metadata?.url ? '✓ (Resume Ready)' : ''}
+                    </div>
+                  </div>
                   
                   <div className="space-y-2">
-                    <label className="text-[9px] font-black uppercase text-slate-400 ml-5 tracking-[0.2em]">Upload Attachment</label>
-                    <input type="file" className="w-full p-4 bg-slate-50 rounded-[2rem] text-xs font-bold border-none outline-none shadow-inner" onChange={(e) => setResumeFile(e.target.files?.[0] || null)} />
+                    <label className="text-[9px] font-black uppercase text-slate-400 ml-5 tracking-[0.2em]">
+                      {selectedApp?.resume_metadata?.url ? 'Update Attachment (Optional)' : 'Upload Attachment'}
+                    </label>
+                    <input 
+                      type="file" 
+                      className="w-full p-4 bg-slate-50 rounded-[2rem] text-xs font-bold border-none outline-none shadow-inner" 
+                      onChange={(e) => setResumeFile(e.target.files?.[0] || null)} 
+                    />
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
@@ -199,11 +258,16 @@ export default function CalendarView() {
                   </div>
 
                   <div className="flex flex-col gap-3 pt-6 border-t border-slate-50">
-                    <button onClick={handleSave} className="w-full py-5 bg-blue-600 text-white rounded-[2rem] font-black text-[11px] uppercase tracking-widest shadow-xl active:scale-95 transition-all">Confirm & Sync</button>
+                    <button 
+                      onClick={handleSave} 
+                      className="w-full py-5 bg-blue-600 text-white rounded-[2rem] font-black text-[11px] uppercase tracking-widest shadow-xl active:scale-95 transition-all"
+                    >
+                        Confirm & Sync
+                    </button>
                     {isManagementMode ? (
                         <button onClick={confirmDelete} className="w-full py-4 text-rose-600 font-black text-[10px] uppercase tracking-widest hover:bg-rose-50 rounded-2xl transition-all">Delete Schedule</button>
                     ) : (
-                        <button onClick={() => setStep(1)} className="w-full py-4 text-slate-400 font-black text-[10px] uppercase tracking-widest">Back</button>
+                        <button onClick={() => setStep(1)} className="w-full py-4 text-slate-400 font-black text-[10px] uppercase tracking-widest hover:bg-slate-50 rounded-2xl transition-all">Back</button>
                     )}
                   </div>
                 </div>
