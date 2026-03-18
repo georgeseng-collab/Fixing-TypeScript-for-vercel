@@ -31,6 +31,9 @@ export default function ApprovalHub() {
     probation: '3 months'
   });
 
+  const sources = ["Fastjobs", "Jobstreet", "Linkedin", "CareerFair", "Others", "Referral"];
+  const departments = ["Sales", "Curriculum", "Customer Success", "Marketing", "Tech", "HR"];
+
   const schedules = {
     "Sales (Fixed)": { days: "3 weekdays + 2 weekends", hours: "Weekdays (Mon - Thurs) : 12.30pm - 8.30pm\nWeekdays (Fri) : 12pm - 9pm\nWeekends (Sat - Sun) : 11am - 9pm" },
     "Curriculum (Teacher 5+1)": { days: "5 Weekdays + 1 Weekend", hours: "Weekdays : 12pm to 9pm\nWeekends : 9am to 6.30pm" },
@@ -43,33 +46,31 @@ export default function ApprovalHub() {
   useEffect(() => { fetchData(); }, []);
 
   const fetchData = async () => {
+    // Broadened filter to ensure candidates show up
     const { data: apps } = await supabase.from('applicants')
       .select('*')
-      .in('status', ['Offered', 'Offer Accepted'])
       .order('name');
     
+    // Filter locally to be safer
+    const filteredApps = (apps || []).filter(a => ['Offered', 'Offer Accepted', 'Interviewing'].includes(a.status));
+
     const { data: team } = await supabase.from('team_members').select('name, email').order('name');
     const { data: hist } = await supabase.from('salary_approval_history').select('*').order('sent_at', { ascending: false });
 
-    setApplicants(apps || []);
+    setApplicants(filteredApps);
     setTeamMembers(team || []);
     setHistory(hist || []);
   };
 
-  // --- NEW: RANGE DETECTION LOGIC ---
+  // NEW: Helper to handle ranges (3500 - 4500)
   const n = (val) => {
     if (!val) return 0;
     const str = String(val).toLowerCase();
-    
-    // If it's a range like "3000 - 4000" or "3k to 4k"
     if (str.includes('-') || str.includes('to')) {
       const parts = str.split(/-|to/);
-      // Grab the second part (the higher end of the range)
       const highEnd = parts[parts.length - 1].replace(/[^0-9.]/g, '');
       return Number(highEnd) || 0;
     }
-    
-    // Default: Strip symbols and return number
     const num = Number(str.replace(/[^0-9.]/g, ''));
     return isNaN(num) ? 0 : num;
   };
@@ -78,7 +79,6 @@ export default function ApprovalHub() {
     setSelectedId(id);
     const app = applicants.find(a => a.id === id);
     if (app) {
-      // Set proposed to offered_salary (Dashboard) or high-end of expected
       setDetails(prev => ({
         ...prev, 
         proposedSal: app.offered_salary || n(app.salary_expectation || app.expected_salary) || 0 
@@ -100,7 +100,6 @@ export default function ApprovalHub() {
   const selectedApp = applicants.find(a => a.id === selectedId);
   const currentSchedule = schedules[details.scheduleKey] || schedules["Sales (Fixed)"];
 
-  // Mapping using the range-aware 'n' function
   const currentSal = n(selectedApp?.current_salary || selectedApp?.last_drawn_salary || 0);
   const expectedSal = n(selectedApp?.salary_expectation || selectedApp?.expected_salary || 0);
   const proposedSal = n(details.proposedSal);
@@ -170,20 +169,15 @@ export default function ApprovalHub() {
                 <label className={labelClass}>Candidate Selection</label>
                 <select className={selectClass} value={selectedId} onChange={e => handleCandidateChange(e.target.value)}>
                   <option value="">Choose Candidate...</option>
-                  {applicants.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  {applicants.map(a => <option key={a.id} value={a.id}>{a.name} ({a.status})</option>)}
                 </select>
-                {selectedApp && (
-                  <p className="text-[9px] font-black text-slate-400 ml-4 mt-2 italic">
-                    Raw DB Expectation: {selectedApp.salary_expectation || selectedApp.expected_salary}
-                  </p>
-                )}
               </div>
 
               <div className="space-y-1 p-4 bg-slate-50 rounded-3xl border-2 border-slate-100">
-                <label className="text-[9px] font-black uppercase text-slate-400 italic block mb-2 tracking-widest">CC Additional Team</label>
+                <label className="text-[9px] font-black uppercase text-slate-400 italic block mb-2 tracking-widest">CC Team Members</label>
                 <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto no-scrollbar">
                   {teamMembers.map(m => (
-                    <button key={m.email} onClick={() => toggleCC(m.email)} className={`px-3 py-2 rounded-xl border-2 text-[9px] font-black uppercase transition-all ${selectedCC.includes(m.email) ? 'bg-slate-900 text-white border-slate-900 shadow-md' : 'bg-white text-slate-400 border-slate-200'}`}>{m.name}</button>
+                    <button key={m.email} onClick={() => toggleCC(m.email)} className={`px-3 py-2 rounded-xl border-2 text-[9px] font-black uppercase transition-all ${selectedCC.includes(m.email) ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-400 border-slate-200'}`}>{m.name}</button>
                   ))}
                 </div>
               </div>
