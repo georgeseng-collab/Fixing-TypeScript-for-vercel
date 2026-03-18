@@ -10,9 +10,11 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('All');
   
+  // Edit State
   const [editId, setEditId] = useState(null);
   const [editData, setEditData] = useState({});
 
+  // Modals State
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [activeApp, setActiveApp] = useState(null);
@@ -87,18 +89,17 @@ export default function Dashboard() {
     fetchData();
   };
 
-  // COLOR SCHEME LOGIC - FIXED & REINFORCED
   const getStatusTheme = (status) => {
     const themes = {
-      'Applied': 'bg-blue-600 text-white',           // BLUE
-      'Interviewing': 'bg-amber-500 text-white',     // YELLOW
-      'Offered': 'bg-purple-600 text-white',         // PURPLE
-      'Offer Accepted': 'bg-indigo-600 text-white',  // INDIGO
-      'Hired': 'bg-emerald-600 text-white',          // GREEN
-      'Resigned': 'bg-orange-700 text-white',        // ORANGE
-      'Blacklisted': 'bg-slate-900 text-white',      // BLACK
-      'Failed Interview': 'bg-slate-500 text-white', // GRAY
-      'Rejected Offer': 'bg-rose-500 text-white'     // RED
+      'Applied': 'bg-blue-600 text-white',
+      'Interviewing': 'bg-amber-500 text-white',
+      'Offered': 'bg-purple-600 text-white',
+      'Offer Accepted': 'bg-indigo-600 text-white',
+      'Hired': 'bg-emerald-600 text-white',
+      'Resigned': 'bg-orange-700 text-white',
+      'Blacklisted': 'bg-slate-900 text-white',
+      'Failed Interview': 'bg-slate-500 text-white',
+      'Rejected Offer': 'bg-rose-500 text-white'
     };
     return themes[status] || 'bg-slate-400 text-white';
   };
@@ -114,7 +115,14 @@ export default function Dashboard() {
   };
 
   const filtered = applicants.filter(a => {
-    const matchesSearch = (a.name || "").toLowerCase().includes(searchTerm.toLowerCase());
+    const s = searchTerm.toLowerCase();
+    // UNIVERSAL SEARCH LOGIC
+    const matchesSearch = 
+      (a.name || "").toLowerCase().includes(s) || 
+      (a.job_role || "").toLowerCase().includes(s) || 
+      (a.email || "").toLowerCase().includes(s) || 
+      (a.phone || "").includes(s);
+
     const isArchived = ['Failed Interview', 'Blacklisted', 'Resigned', 'Rejected Offer'].includes(a.status);
     if (filterStatus === 'Archive') return matchesSearch && isArchived;
     if (filterStatus === 'All') return matchesSearch && !isArchived;
@@ -124,11 +132,11 @@ export default function Dashboard() {
   return (
     <div className="max-w-7xl mx-auto px-6 py-12 space-y-8 pb-32 relative">
       
-      {/* MODALS REMAIN THE SAME */}
+      {/* MODALS */}
       {showStatusModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-4">
           <div className="bg-white border-8 border-slate-900 w-full max-w-lg rounded-[3rem] shadow-[20px_20px_0px_0px_rgba(0,0,0,1)] p-10 space-y-6">
-            <h2 className="text-4xl font-black uppercase italic tracking-tighter italic">Status Update</h2>
+            <h2 className="text-4xl font-black uppercase italic tracking-tighter">Status Update</h2>
             <div className="space-y-4">
               {modalType === 'resigned' && (
                 <div className="space-y-2">
@@ -152,8 +160,7 @@ export default function Dashboard() {
       {showHistoryModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/95 backdrop-blur-md p-4 text-white">
           <div className="bg-slate-900 border-8 border-white/10 w-full max-w-2xl rounded-[4rem] p-12 relative overflow-hidden">
-            <h2 className="text-5xl font-black uppercase italic tracking-tighter mb-2 leading-none">Journey Log</h2>
-            <p className="text-blue-400 font-black uppercase tracking-[0.3em] text-[10px] mb-10 underline italic">{activeApp?.name}</p>
+            <h2 className="text-5xl font-black uppercase italic tracking-tighter mb-2">Journey Log</h2>
             <div className="max-h-[400px] overflow-y-auto space-y-6 pr-4">
               {(activeApp?.status_history || []).map((h, i) => (
                 <div key={i} className="relative pl-8 border-l-4 border-white/10 py-2">
@@ -171,13 +178,16 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Header */}
+      {/* Header - REFRESH BUTTON REMOVED */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b-8 border-slate-900 pb-8">
         <h1 className="text-7xl font-black text-slate-900 tracking-tighter italic uppercase leading-none">Dashboard</h1>
-        <div className="flex gap-4">
-           <button onClick={() => fetchData()} className="p-5 bg-slate-100 border-4 border-slate-900 rounded-2xl font-black text-xl">↻</button>
-           <input type="text" placeholder="Search..." className="w-full md:w-80 bg-white px-8 py-5 rounded-[2.5rem] border-4 border-slate-900 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] font-bold text-sm outline-none" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-        </div>
+        <input 
+          type="text" 
+          placeholder="Search name, job, email, or phone..." 
+          className="w-full md:w-96 bg-white px-8 py-5 rounded-[2.5rem] border-4 border-slate-900 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] font-bold text-sm outline-none focus:bg-blue-50 transition-all placeholder:text-slate-300" 
+          value={searchTerm} 
+          onChange={e => setSearchTerm(e.target.value)} 
+        />
       </div>
 
       {/* Stats Bar */}
@@ -197,9 +207,8 @@ export default function Dashboard() {
           const isArchived = ['Failed Interview', 'Blacklisted', 'Resigned', 'Rejected Offer'].includes(app.status);
 
           return (
-            <div key={app.id} className="bg-white rounded-[4rem] border-4 border-slate-900 shadow-[14px_14px_0px_0px_rgba(15,23,42,1)] overflow-hidden flex flex-col transition-all">
+            <div key={app.id} className="bg-white rounded-[4rem] border-4 border-slate-900 shadow-[14px_14px_0px_0px_rgba(15,23,42,1)] overflow-hidden flex flex-col transition-all hover:-translate-y-2">
               
-              {/* FIXED HEADER COLOR - ALWAYS SHOWS THE CORRECT THEME */}
               <div className={`p-10 pb-8 ${getStatusTheme(app.status)} border-b-4 border-slate-900`}>
                   <div className="flex-grow">
                     {editId === app.id ? (
@@ -236,7 +245,6 @@ export default function Dashboard() {
                   )}
                 </div>
 
-                {/* ARCHIVE CONTENT AREA */}
                 {isArchived ? (
                   <div className="bg-slate-900 p-8 rounded-[3.5rem] space-y-5 text-white shadow-inner">
                     {app.status === 'Resigned' && <div className="space-y-1"><span className="text-[9px] font-black text-blue-400 uppercase italic">Date of Leaving</span><p className="text-sm font-bold text-rose-400 italic">{app.resignation_date || 'N/A'}</p></div>}
@@ -262,12 +270,7 @@ export default function Dashboard() {
                     )}
 
                     {app.status === 'Offer Accepted' && isReady ? (
-                      <button 
-                        onClick={() => updateStatus(app.id, 'Hired', 'Successfully Onboarded', '')} 
-                        className="w-full py-8 bg-emerald-500 text-white rounded-[2.5rem] border-4 border-slate-900 font-black uppercase tracking-[0.2em] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] animate-pulse hover:bg-slate-900 transition-all"
-                      >
-                        🎉 Onboard Now
-                      </button>
+                      <button onClick={() => updateStatus(app.id, 'Hired', 'Onboarded', '')} className="w-full py-8 bg-emerald-500 text-white rounded-[2.5rem] border-4 border-slate-900 font-black uppercase tracking-[0.2em] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] animate-pulse hover:bg-slate-900">🎉 Onboard Now</button>
                     ) : (
                       <select value={app.status} onChange={e => handleStatusSelect(app, e.target.value)} className={`w-full py-6 rounded-[2.5rem] text-[12px] font-black uppercase border-4 border-slate-900 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] text-center appearance-none cursor-pointer ${getStatusTheme(app.status)}`}>
                         {app.status === 'Hired' ? (
@@ -291,7 +294,7 @@ export default function Dashboard() {
                   </div>
                 )}
 
-                {/* Salaries (Editable) */}
+                {/* Salaries */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-slate-50 p-5 rounded-[1.5rem] border-2 border-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-center">
                     <span className="block text-[9px] font-black text-slate-400 uppercase mb-1 italic">Last Drawn</span>
@@ -311,7 +314,7 @@ export default function Dashboard() {
                   </div>
                 </div>
 
-                {/* Action Icons Row */}
+                {/* Action Icons */}
                 <div className="flex gap-4">
                   <a href={app.resume_metadata?.url} target="_blank" className="flex-1 flex justify-center items-center bg-white border-4 border-slate-900 py-5 rounded-[2rem] shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:bg-slate-900 hover:text-white transition-all text-2xl">📄</a>
                   <button onClick={() => { setActiveApp(app); setShowHistoryModal(true); }} className="flex-1 flex justify-center items-center bg-slate-50 rounded-[2rem] border-4 border-slate-900 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:bg-blue-500 hover:text-white transition-all text-2xl">🕒</button>
