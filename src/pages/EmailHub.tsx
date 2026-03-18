@@ -4,6 +4,7 @@ import { supabase } from '../db';
 
 export default function EmailHub() {
   const [applicants, setApplicants] = useState([]);
+  const [history, setHistory] = useState([]);
   const [selectedId, setSelectedId] = useState('');
   const [isFullTimeStaff, setIsFullTimeStaff] = useState(true); 
   const [isSingaporean, setIsSingaporean] = useState(true); 
@@ -27,21 +28,30 @@ export default function EmailHub() {
     offerExpiry: '2026-03-20'
   });
 
-  useEffect(() => {
-    const fetchApplicants = async () => {
-      const { data } = await supabase.from('applicants').select('id, name, email, job_role').order('name');
-      setApplicants(data || []);
-    };
-    fetchApplicants();
-  }, []);
+  const fetchData = async () => {
+    // Fetch only relevant stages
+    const { data: apps } = await supabase.from('applicants')
+      .select('id, name, email, job_role')
+      .in('status', ['Interviewing', 'Offered'])
+      .order('name');
+    
+    const { data: hist } = await supabase.from('offer_history')
+      .select('*')
+      .order('sent_at', { ascending: false });
+
+    setApplicants(apps || []);
+    setHistory(hist || []);
+  };
+
+  useEffect(() => { fetchData(); }, []);
 
   const selectedApp = applicants.find(a => a.id === selectedId);
   const currentSchedule = schedules[details.scheduleKey];
   const showTrainingCost = currentSchedule.type === 'sales' || currentSchedule.type === 'teacher';
   const trainingCostAmount = isSingaporean ? "$2,000" : "$1,000";
 
-  const handleGmailDispatch = async () => {
-    if (!selectedId) return alert("Please select a candidate first.");
+  const handleDispatch = async () => {
+    if (!selectedId) return alert("Select candidate first.");
     const emailContent = document.getElementById('email-content');
     const type = "text/html";
     const blob = new Blob([emailContent.innerHTML], { type });
@@ -50,26 +60,40 @@ export default function EmailHub() {
     try {
       await navigator.clipboard.write(data);
       setCopyStatus(true);
+
+      // 1. Log to history
+      await supabase.from('offer_history').insert([{
+        applicant_id: selectedApp.id,
+        applicant_name: selectedApp.name,
+        role: selectedApp.job_role,
+        salary: details.salary
+      }]);
+
+      // 2. Update Applicant Status
+      await supabase.from('applicants').update({ status: 'Offered' }).eq('id', selectedApp.id);
+
+      // 3. Open Gmail
       const role = selectedApp?.job_role || 'Outbound Education Consultant';
-      const name = selectedApp?.name || 'Candidate';
-      const subject = `Congratulations_Offered (${role}) _ ${name}`;
+      const subject = `Congratulations_Offered (${role}) _ ${selectedApp?.name}`;
       const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${selectedApp?.email}&su=${encodeURIComponent(subject)}`;
       
-      await supabase.from('applicants').update({ status: 'Offered' }).eq('id', selectedApp.id);
-      
-      setTimeout(() => {
-        window.open(gmailUrl, '_blank');
-        setCopyStatus(false);
-      }, 800);
-    } catch (err) {
-      alert("Auto-copy failed. Please manually select and copy the preview.");
+      window.open(gmailUrl, '_blank');
+      fetchData();
+      setTimeout(() => setCopyStatus(false), 2000);
+    } catch (err) { alert("Copy failed."); }
+  };
+
+  const deleteHistoryOnly = async (id) => {
+    if (confirm("Remove this entry from history log? (This will not change candidate status)")) {
+      await supabase.from('offer_history').delete().eq('id', id);
+      fetchData();
     }
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-10 pb-40 font-sans text-slate-900">
+    <div className="max-w-7xl mx-auto px-6 py-10 pb-40">
       <div className="flex justify-between items-center mb-10 border-b-8 border-slate-900 pb-8">
-        <h1 className="text-5xl font-black uppercase italic tracking-tighter">Offer Generator</h1>
+        <h1 className="text-5xl font-black uppercase italic tracking-tighter">Offer Hub</h1>
         <div className="flex gap-4">
            <div className="bg-slate-200 p-1.5 rounded-2xl flex gap-1">
               <button onClick={() => setIsFullTimeStaff(true)} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${isFullTimeStaff ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}>Full Time Staff</button>
@@ -83,34 +107,43 @@ export default function EmailHub() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-        <div className="lg:col-span-4 space-y-4 sticky top-24 h-fit">
-          <div className="bg-white p-8 rounded-[3.5rem] shadow-2xl border-4 border-slate-900 space-y-6">
-            <select className="w-full p-5 bg-slate-50 rounded-[1.5rem] font-bold outline-none border-2 border-transparent focus:border-blue-600" value={selectedId} onChange={e => setSelectedId(e.target.value)}>
-              <option value="">Select Candidate...</option>
+        <div className="lg:col-span-4 space-y-6">
+          <div className="bg-white p-8 rounded-[3.5rem] shadow-2xl border-4 border-slate-900 space-y-4">
+            <select className="w-full p-4 bg-slate-50 rounded-2xl font-bold text-sm" value={selectedId} onChange={e => setSelectedId(e.target.value)}>
+              <option value="">Choose Candidate...</option>
               {applicants.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
-            
-            <select className="w-full p-5 bg-slate-50 rounded-[1.5rem] font-bold outline-none" value={details.scheduleKey} onChange={e => setDetails({...details, scheduleKey: e.target.value})}>
+            <select className="w-full p-4 bg-slate-50 rounded-2xl font-bold text-sm" value={details.scheduleKey} onChange={e => setDetails({...details, scheduleKey: e.target.value})}>
               {Object.keys(schedules).map(k => <option key={k} value={k}>{k}</option>)}
             </select>
-
             <div className="grid grid-cols-2 gap-4">
-              <input className="p-5 bg-slate-50 rounded-[1.5rem] font-bold text-sm shadow-inner" placeholder="Monthly Salary" value={details.salary} onChange={e => setDetails({...details, salary: e.target.value})} />
-              <input type="date" className="p-5 bg-slate-50 rounded-[1.5rem] font-bold text-sm shadow-inner" value={details.joinDate} onChange={e => setDetails({...details, joinDate: e.target.value})} />
+              <input className="p-4 bg-slate-50 rounded-2xl font-bold text-sm" placeholder="Salary" value={details.salary} onChange={e => setDetails({...details, salary: e.target.value})} />
+              <input type="date" className="p-4 bg-slate-50 rounded-2xl font-bold text-sm" value={details.joinDate} onChange={e => setDetails({...details, joinDate: e.target.value})} />
             </div>
-
             <div className="grid grid-cols-2 gap-4">
-              <input className="p-5 bg-slate-50 rounded-[1.5rem] font-bold text-sm shadow-inner" placeholder="Notice Period" value={details.noticePeriod} onChange={e => setDetails({...details, noticePeriod: e.target.value})} />
-              <input type="date" className="p-5 bg-slate-50 rounded-[1.5rem] font-bold text-sm shadow-inner" value={details.offerExpiry} onChange={e => setDetails({...details, offerExpiry: e.target.value})} />
+              <input className="p-4 bg-slate-50 rounded-2xl font-bold text-sm" placeholder="Notice" value={details.noticePeriod} onChange={e => setDetails({...details, noticePeriod: e.target.value})} />
+              <input type="date" className="p-4 bg-slate-50 rounded-2xl font-bold text-sm" value={details.offerExpiry} onChange={e => setDetails({...details, offerExpiry: e.target.value})} />
             </div>
-
-            <button onClick={handleGmailDispatch} disabled={copyStatus} className={`w-full py-8 text-white rounded-[2.5rem] font-black uppercase tracking-[0.2em] shadow-xl transition-all active:scale-95 ${copyStatus ? 'bg-emerald-500' : 'bg-red-600 hover:bg-slate-900'}`}>
-              {copyStatus ? '✅ READY TO PASTE!' : '🚀 DISPATCH TO GMAIL'}
+            <button onClick={handleDispatch} className={`w-full py-8 text-white rounded-[2.5rem] font-black uppercase tracking-[0.2em] shadow-xl transition-all ${copyStatus ? 'bg-emerald-500' : 'bg-red-600'}`}>
+              {copyStatus ? '✅ COPIED!' : '🚀 DISPATCH GMAIL'}
             </button>
+          </div>
+
+          <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white max-h-[400px] overflow-y-auto shadow-inner">
+            <h3 className="text-xs font-black uppercase tracking-widest text-blue-400 mb-4">Offer History</h3>
+            {history.map(h => (
+              <div key={h.id} className="flex justify-between items-center bg-slate-800 p-4 rounded-xl mb-2 group border border-transparent hover:border-slate-600 transition-all">
+                <div>
+                  <div className="text-[11px] font-black uppercase tracking-tight">{h.applicant_name}</div>
+                  <div className="text-[9px] text-slate-400 font-bold">${h.salary} - {new Date(h.sent_at).toLocaleDateString()}</div>
+                </div>
+                <button onClick={() => deleteHistoryOnly(h.id)} className="opacity-0 group-hover:opacity-100 text-red-500 text-xs font-black p-2 hover:bg-red-500/10 rounded-lg transition-all">✕</button>
+              </div>
+            ))}
           </div>
         </div>
 
-        <div className="lg:col-span-8 bg-white p-16 rounded-[4.5rem] shadow-2xl border border-slate-100">
+        <div className="lg:col-span-8 bg-white p-12 rounded-[4.5rem] shadow-2xl border border-slate-100">
           <div id="email-content" style={{ color: '#000', fontFamily: 'Arial, sans-serif', fontSize: '15px', lineHeight: '1.4' }}>
             <p>Dear {selectedApp?.name || 'Miko'},</p>
             <br />
