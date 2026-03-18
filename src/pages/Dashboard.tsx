@@ -31,33 +31,16 @@ export default function Dashboard() {
     return themes[status] || 'bg-slate-400 text-white';
   };
 
-  const handleBooking = (app, type) => {
-    const dateIn = window.prompt(`Confirm Date (YYYY-MM-DD):`, new Date().toLocaleDateString('en-CA'));
-    const timeIn = window.prompt(`Confirm Time (24h HH:MM):`, "10:00");
-    if (!dateIn || !timeIn) return null;
-
-    const gDate = dateIn.replace(/-/g, '');
-    const gTime = timeIn.replace(/:/g, '');
-    const start = `${gDate}T${gTime}00`;
-    let [h, m] = timeIn.split(':').map(Number);
-    let endH = (h + 1).toString().padStart(2, '0');
-    const end = `${gDate}T${endH}${m.toString().padStart(2, '0')}00`;
-
-    const title = encodeURIComponent(`${type}: ${app.name}`);
-    const details = encodeURIComponent(`Role: ${app.job_role}\nEmail: ${app.email}`);
-    
-    window.open(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}&details=${details}&ctz=Asia/Singapore`, '_blank');
-    return `${dateIn}T${timeIn}:00+08:00`;
-  };
-
   const handleStatusChange = async (app, newStatus) => {
-    let timestamp = new Date().toISOString(); 
-    if (newStatus === 'Interviewing' || newStatus === 'Hired') {
-      const fixedTime = handleBooking(app, newStatus.toUpperCase());
-      if (fixedTime) timestamp = fixedTime; else return;
-    }
+    // Simple movement logic - no prompts here to keep it fast
+    const timestamp = new Date().toISOString(); 
     const history = [...(app.status_history || []), { status: newStatus, date: timestamp }];
-    await supabase.from('applicants').update({ status: newStatus, status_history: history }).eq('id', app.id);
+    
+    await supabase.from('applicants').update({ 
+      status: newStatus, 
+      status_history: history 
+    }).eq('id', app.id);
+    
     fetchData();
   };
 
@@ -71,57 +54,75 @@ export default function Dashboard() {
     .filter(a => (a.name.toLowerCase().includes(searchTerm.toLowerCase()) || a.job_role.toLowerCase().includes(searchTerm.toLowerCase())))
     .filter(a => (filterStatus === 'All' || a.status === filterStatus));
 
-  if (loading) return <div className="h-screen flex items-center justify-center font-black text-blue-600 text-5xl animate-pulse italic tracking-tighter">GENIEBOOK</div>;
+  if (loading) return <div className="h-screen flex items-center justify-center font-black text-blue-600 text-5xl animate-pulse italic">GENIEBOOK</div>;
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-12 space-y-12 pb-24">
       <div className="flex flex-wrap gap-3">
         {['All', 'Applied', 'Interviewing', 'Offered', 'Hired'].map(s => (
-          <button key={s} onClick={() => setFilterStatus(s)} className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${filterStatus === s ? 'bg-slate-900 text-white shadow-2xl scale-105' : 'bg-white text-slate-400 border border-slate-100 hover:bg-slate-50'}`}>
+          <button key={s} onClick={() => setFilterStatus(s)} className={`px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${filterStatus === s ? 'bg-slate-900 text-white shadow-xl scale-105' : 'bg-white text-slate-400 border border-slate-100 hover:bg-slate-50'}`}>
             {s}
           </button>
         ))}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
         {filtered.map(app => (
-          <div key={app.id} className="bg-white rounded-[4rem] border border-slate-50 shadow-2xl flex flex-col overflow-hidden transition-all hover:scale-[1.01]">
-            <div className={`p-10 pb-6 ${getStatusTheme(app.status)}`}>
+          <div key={app.id} className="bg-white rounded-[3.5rem] border border-slate-100 shadow-2xl flex flex-col overflow-hidden transition-all hover:scale-[1.01]">
+            <div className={`p-8 pb-6 ${getStatusTheme(app.status)}`}>
               <div className="flex justify-between items-start">
-                <div className="flex-grow space-y-2">
+                <div className="flex-grow space-y-1">
                   {editId === app.id ? (
-                    <input className="w-full text-2xl font-black bg-white/20 rounded px-2 outline-none text-white" value={editData.name} onChange={e => setEditData({...editData, name: e.target.value})} />
+                    <>
+                      <input className="w-full text-xl font-black bg-white/20 rounded px-2 outline-none text-white mb-1" value={editData.name} onChange={e => setEditData({...editData, name: e.target.value})} />
+                      <input className="w-full text-[9px] font-black uppercase bg-white/10 rounded px-2 outline-none text-white/80" value={editData.job_role} onChange={e => setEditData({...editData, job_role: e.target.value})} />
+                    </>
                   ) : (
-                    <h2 className="text-3xl font-black tracking-tighter leading-none">{app.name}</h2>
+                    <>
+                      <h2 className="text-2xl font-black tracking-tight leading-none">{app.name}</h2>
+                      <p className="text-[10px] font-black uppercase opacity-80 tracking-widest">{app.job_role}</p>
+                    </>
                   )}
-                  <p className="text-[11px] font-black uppercase opacity-80 tracking-widest">{app.job_role}</p>
                 </div>
-                <button onClick={() => editId === app.id ? saveEdit() : (setEditId(app.id), setEditData(app))} className="p-4 bg-white/20 hover:bg-white/40 rounded-3xl transition-all ml-4">
+                <button onClick={() => editId === app.id ? saveEdit() : (setEditId(app.id), setEditData(app))} className="p-3 bg-white/20 hover:bg-white/40 rounded-2xl transition-all ml-2">
                   {editId === app.id ? '✔️' : '✏️'}
                 </button>
               </div>
             </div>
 
-            <div className="p-10 pt-8 space-y-6 flex-grow">
-              {/* RESTORED SCHEDULE BUTTON */}
-              <button onClick={() => handleStatusChange(app, 'Interviewing')} className="w-full py-5 bg-amber-400 text-amber-950 rounded-[2rem] font-black text-[12px] uppercase tracking-widest hover:bg-amber-500 transition-all shadow-lg">
-                📅 Schedule Interview
-              </button>
-
-              <div className="bg-slate-50 p-6 rounded-[2.5rem] space-y-4">
-                <div className="flex justify-between text-xs font-bold border-b pb-2">
-                  <span className="text-slate-400 uppercase text-[9px]">Last Drawn</span>
-                  <span>{app.last_drawn_salary || '—'}</span>
+            <div className="p-8 space-y-6 flex-grow">
+              {/* Financials & Contact Grid */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-slate-50 p-4 rounded-3xl border border-slate-100">
+                  <span className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Last Drawn</span>
+                  {editId === app.id ? <input className="w-full text-xs font-bold bg-transparent border-b" value={editData.last_drawn_salary} onChange={e => setEditData({...editData, last_drawn_salary: e.target.value})} /> : <span className="text-xs font-bold text-slate-700">{app.last_drawn_salary || '—'}</span>}
                 </div>
-                <div className="flex justify-between text-xs font-black">
-                  <span className="text-slate-400 uppercase text-[9px]">Expected</span>
-                  <span className="text-blue-600">{app.salary_expectation || '—'}</span>
+                <div className="bg-slate-50 p-4 rounded-3xl border border-slate-100">
+                  <span className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Expected</span>
+                  {editId === app.id ? <input className="w-full text-xs font-black bg-transparent border-b text-blue-600" value={editData.salary_expectation} onChange={e => setEditData({...editData, salary_expectation: e.target.value})} /> : <span className="text-xs font-black text-blue-600">{app.salary_expectation || '—'}</span>}
                 </div>
               </div>
 
+              {/* Status Mover */}
+              <div className="space-y-2">
+                <span className="text-[8px] font-black text-slate-300 uppercase px-2">Move Candidate To:</span>
+                <select 
+                  value={app.status} 
+                  onChange={e => handleStatusChange(app, e.target.value)} 
+                  className={`w-full py-4 px-6 rounded-2xl text-[10px] font-black uppercase tracking-widest cursor-pointer border-2 appearance-none text-center ${getStatusTheme(app.status)}`}
+                >
+                  <option value="Applied">Applied</option>
+                  <option value="Interviewing">Interviewing</option>
+                  <option value="Offered">Offered</option>
+                  <option value="Hired">Hired</option>
+                  <option value="Rejected Offer">Rejected Offer</option>
+                </select>
+              </div>
+
               <div className="flex gap-2">
-                <a href={`mailto:${app.email}`} className="flex-1 bg-slate-100 p-4 rounded-2xl text-center text-[10px] font-black uppercase">Email</a>
-                <a href={`https://wa.me/${app.phone?.replace(/[^0-9]/g, '')}`} target="_blank" className="flex-1 bg-emerald-100 p-4 rounded-2xl text-center text-[10px] font-black uppercase text-emerald-700">WhatsApp</a>
+                <a href={`mailto:${app.email}`} className="flex-1 bg-slate-100 py-3 rounded-2xl text-[9px] font-black text-center text-slate-500 uppercase">Email</a>
+                <a href={`https://wa.me/${app.phone?.replace(/[^0-9]/g, '')}`} target="_blank" className="flex-1 bg-emerald-100 py-3 rounded-2xl text-[9px] font-black text-center text-emerald-700 uppercase">WhatsApp</a>
+                <button onClick={() => setShowHistoryId(showHistoryId === app.id ? null : app.id)} className="px-5 bg-slate-50 rounded-2xl text-slate-300 font-bold hover:text-blue-500">🕒</button>
               </div>
             </div>
           </div>
