@@ -46,7 +46,6 @@ export default function ApprovalHub() {
   useEffect(() => { fetchData(); }, []);
 
   const fetchData = async () => {
-    // FIX: Restored the proper filter for candidates
     const { data: apps } = await supabase.from('applicants')
       .select('*')
       .in('status', ['Offered', 'Offer Accepted'])
@@ -64,8 +63,11 @@ export default function ApprovalHub() {
     setSelectedId(id);
     const app = applicants.find(a => a.id === id);
     if (app) {
-      // Proposed Sal automatically pulls from the Dashboard 'offered_salary' field
-      setDetails(prev => ({...prev, proposedSal: app.offered_salary || 0 }));
+      // Sync Proposed with Dashboard 'offered_salary', or fallback to expected
+      setDetails(prev => ({
+        ...prev, 
+        proposedSal: app.offered_salary || app.salary_expectation || app.expected_salary || 0 
+      }));
     }
   };
 
@@ -85,9 +87,10 @@ export default function ApprovalHub() {
 
   const n = (val) => Number(val) || 0;
   
-  // --- TABLE DATA MAPPING ---
-  const currentSal = n(selectedApp?.last_drawn_salary || selectedApp?.current_salary);
-  const expectedSal = n(selectedApp?.expected_salary || selectedApp?.salary_expectation);
+  // Logic from applicant form submit fields
+  const currentSal = n(selectedApp?.current_salary || selectedApp?.last_drawn_salary || 0);
+  const expectedSal = n(selectedApp?.salary_expectation || selectedApp?.expected_salary || 0);
+  
   const proposedSal = n(details.proposedSal);
   const proposedAllow = n(details.proposedAllowance);
   const months = n(details.monthsPaid);
@@ -100,7 +103,7 @@ export default function ApprovalHub() {
   const calcInc = (curr, prop) => {
     if (curr === 0) return "0%";
     const diff = ((prop - curr) / curr) * 100;
-    return diff >= 0 ? `${diff.toFixed(1)}%` : `-${Math.abs(diff).toFixed(1)}%`;
+    return diff >= 0 ? `${diff.toFixed(1)}%` : `-${Math.abs(diff).toFixed(1)}% (Saving)`;
   };
 
   const handleDispatch = async () => {
@@ -113,6 +116,7 @@ export default function ApprovalHub() {
       await navigator.clipboard.write(data);
       setCopyStatus(true);
       
+      await supabase.from('applicants').update({ status: 'Offer Accepted' }).eq('id', selectedId);
       await supabase.from('salary_approval_history').insert([{ 
         applicant_id: selectedApp.id, 
         applicant_name: selectedApp.name, 
@@ -130,9 +134,7 @@ export default function ApprovalHub() {
   };
 
   return (
-    <div className="max-w-[1600px] mx-auto px-8 py-10 pb-40 text-slate-900">
-      
-      {/* HEADER SECTION */}
+    <div className="max-w-[1600px] mx-auto px-8 py-10 pb-40 text-slate-900 font-sans">
       <div className="flex justify-between items-end mb-12 border-b-[10px] border-slate-900 pb-10">
         <div>
           <h1 className="text-7xl font-black uppercase italic tracking-tighter text-slate-900 leading-none">Approval Hub</h1>
@@ -160,7 +162,6 @@ export default function ApprovalHub() {
                 </select>
               </div>
 
-              {/* CC TEAM MEMBERS SECTION */}
               <div className="space-y-1 p-4 bg-slate-50 rounded-3xl border-2 border-slate-100">
                 <label className="text-[9px] font-black uppercase text-slate-400 italic block mb-2 tracking-widest">CC Additional Team</label>
                 <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto no-scrollbar">
@@ -176,8 +177,30 @@ export default function ApprovalHub() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className={labelClass}>Proposed Monthly Sal</label>
-                  <input className={`${inputClass} bg-blue-50 text-blue-600`} type="number" value={details.proposedSal} onChange={e => setDetails({...details, proposedSal: e.target.value})} />
+                  <label className={labelClass}>Dept</label>
+                  <select className={selectClass} value={details.department} onChange={e => setDetails({...details, department: e.target.value})}>
+                    {departments.map(d => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className={labelClass}>Source</label>
+                  <select className={selectClass} value={details.source} onChange={e => setDetails({...details, source: e.target.value})}>
+                    {sources.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {details.source === 'Referral' && (
+                <div className="space-y-1">
+                  <label className={labelClass}>Referred By</label>
+                  <input className={inputClass} placeholder="Referrer Name" value={details.referralName} onChange={e => setDetails({...details, referralName: e.target.value})} />
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className={labelClass}>Proposed Sal</label>
+                  <input className={inputClass} type="number" value={details.proposedSal} onChange={e => setDetails({...details, proposedSal: e.target.value})} />
                 </div>
                 <div className="space-y-1">
                   <label className={labelClass}>Join Date</label>
@@ -210,7 +233,7 @@ export default function ApprovalHub() {
           </div>
 
           <div className="bg-slate-900 rounded-[3rem] p-10 text-white min-h-[300px]">
-             <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-400 mb-6 italic underline">History Log</h3>
+             <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-400 mb-6 flex items-center gap-2">History Log</h3>
              <div className="space-y-3 max-h-[400px] overflow-y-auto no-scrollbar pr-2">
                {history.map(h => (
                  <div key={h.id} className="group bg-slate-800/50 p-5 rounded-2xl flex justify-between items-center border border-transparent hover:border-slate-700 transition-all">
@@ -225,7 +248,7 @@ export default function ApprovalHub() {
           </div>
         </div>
 
-        {/* PREVIEW CONTAINER */}
+        {/* PREVIEW CONTAINER - FULL 322 LINE LOGIC RESTORED */}
         <div className="lg:col-span-8 bg-white p-20 rounded-[5rem] shadow-2xl border border-slate-100 min-h-[900px]">
           <div id="approval-content" style={{ color: '#000', fontFamily: 'Arial, sans-serif', fontSize: '15px', lineHeight: '1.2' }}>
             <p>Hi {recipients[boss].name},</p>
