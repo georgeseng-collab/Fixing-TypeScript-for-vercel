@@ -29,10 +29,10 @@ export default function EmailHub() {
   });
 
   const fetchData = async () => {
-    // Fetch only relevant stages
+    // CRITICAL: Filter changed to ONLY 'Offered'
     const { data: apps } = await supabase.from('applicants')
       .select('id, name, email, job_role')
-      .in('status', ['Interviewing', 'Offered'])
+      .eq('status', 'Offered')
       .order('name');
     
     const { data: hist } = await supabase.from('offer_history')
@@ -53,15 +53,14 @@ export default function EmailHub() {
   const handleDispatch = async () => {
     if (!selectedId) return alert("Select candidate first.");
     const emailContent = document.getElementById('email-content');
-    const type = "text/html";
-    const blob = new Blob([emailContent.innerHTML], { type });
-    const data = [new ClipboardItem({ [type]: blob })];
+    const blob = new Blob([emailContent.innerHTML], { type: "text/html" });
+    const data = [new ClipboardItem({ "text/html": blob })];
 
     try {
       await navigator.clipboard.write(data);
       setCopyStatus(true);
 
-      // 1. Log to history
+      // Log to history
       await supabase.from('offer_history').insert([{
         applicant_id: selectedApp.id,
         applicant_name: selectedApp.name,
@@ -69,10 +68,6 @@ export default function EmailHub() {
         salary: details.salary
       }]);
 
-      // 2. Update Applicant Status
-      await supabase.from('applicants').update({ status: 'Offered' }).eq('id', selectedApp.id);
-
-      // 3. Open Gmail
       const role = selectedApp?.job_role || 'Outbound Education Consultant';
       const subject = `Congratulations_Offered (${role}) _ ${selectedApp?.name}`;
       const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${selectedApp?.email}&su=${encodeURIComponent(subject)}`;
@@ -84,7 +79,7 @@ export default function EmailHub() {
   };
 
   const deleteHistoryOnly = async (id) => {
-    if (confirm("Remove this entry from history log? (This will not change candidate status)")) {
+    if (confirm("Remove this entry from history log?")) {
       await supabase.from('offer_history').delete().eq('id', id);
       fetchData();
     }
@@ -92,6 +87,7 @@ export default function EmailHub() {
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-10 pb-40">
+      {/* HEADER SECTION */}
       <div className="flex justify-between items-center mb-10 border-b-8 border-slate-900 pb-8">
         <h1 className="text-5xl font-black uppercase italic tracking-tighter">Offer Hub</h1>
         <div className="flex gap-4">
@@ -101,7 +97,7 @@ export default function EmailHub() {
            </div>
            <div className="bg-slate-200 p-1.5 rounded-2xl flex gap-1">
               <button onClick={() => setIsSingaporean(true)} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${isSingaporean ? 'bg-white shadow text-emerald-600' : 'text-slate-500'}`}>Singaporean</button>
-              <button onClick={() => setIsSingaporean(false)} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase ${!isSingaporean ? 'bg-white shadow text-emerald-600' : 'text-slate-500'}`}>Malaysian</button>
+              <button onClick={() => setIsSingaporean(false)} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${!isSingaporean ? 'bg-white shadow text-emerald-600' : 'text-slate-500'}`}>Malaysian</button>
            </div>
         </div>
       </div>
@@ -109,10 +105,12 @@ export default function EmailHub() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
         <div className="lg:col-span-4 space-y-6">
           <div className="bg-white p-8 rounded-[3.5rem] shadow-2xl border-4 border-slate-900 space-y-4">
-            <select className="w-full p-4 bg-slate-50 rounded-2xl font-bold text-sm" value={selectedId} onChange={e => setSelectedId(e.target.value)}>
+            <p className="text-[10px] font-black text-blue-600 uppercase ml-4">Showing: 'Offered' Stage Only</p>
+            <select className="w-full p-4 bg-slate-50 rounded-2xl font-bold text-sm border-2 border-slate-100 focus:border-blue-600 outline-none" value={selectedId} onChange={e => setSelectedId(e.target.value)}>
               <option value="">Choose Candidate...</option>
               {applicants.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
+            {/* ... rest of the settings inputs ... */}
             <select className="w-full p-4 bg-slate-50 rounded-2xl font-bold text-sm" value={details.scheduleKey} onChange={e => setDetails({...details, scheduleKey: e.target.value})}>
               {Object.keys(schedules).map(k => <option key={k} value={k}>{k}</option>)}
             </select>
@@ -124,13 +122,14 @@ export default function EmailHub() {
               <input className="p-4 bg-slate-50 rounded-2xl font-bold text-sm" placeholder="Notice" value={details.noticePeriod} onChange={e => setDetails({...details, noticePeriod: e.target.value})} />
               <input type="date" className="p-4 bg-slate-50 rounded-2xl font-bold text-sm" value={details.offerExpiry} onChange={e => setDetails({...details, offerExpiry: e.target.value})} />
             </div>
-            <button onClick={handleDispatch} className={`w-full py-8 text-white rounded-[2.5rem] font-black uppercase tracking-[0.2em] shadow-xl transition-all ${copyStatus ? 'bg-emerald-500' : 'bg-red-600'}`}>
+            <button onClick={handleDispatch} className={`w-full py-8 text-white rounded-[2.5rem] font-black uppercase tracking-[0.2em] shadow-xl transition-all ${copyStatus ? 'bg-emerald-500' : 'bg-red-600 hover:bg-slate-900'}`}>
               {copyStatus ? '✅ COPIED!' : '🚀 DISPATCH GMAIL'}
             </button>
           </div>
 
-          <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white max-h-[400px] overflow-y-auto shadow-inner">
-            <h3 className="text-xs font-black uppercase tracking-widest text-blue-400 mb-4">Offer History</h3>
+          {/* HISTORY LOG */}
+          <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white max-h-[400px] overflow-y-auto">
+            <h3 className="text-xs font-black uppercase tracking-widest text-blue-400 mb-4 tracking-tighter">Dispatch History</h3>
             {history.map(h => (
               <div key={h.id} className="flex justify-between items-center bg-slate-800 p-4 rounded-xl mb-2 group border border-transparent hover:border-slate-600 transition-all">
                 <div>
@@ -143,75 +142,72 @@ export default function EmailHub() {
           </div>
         </div>
 
+        {/* EMAIL PREVIEW */}
         <div className="lg:col-span-8 bg-white p-12 rounded-[4.5rem] shadow-2xl border border-slate-100">
-          <div id="email-content" style={{ color: '#000', fontFamily: 'Arial, sans-serif', fontSize: '15px', lineHeight: '1.4' }}>
-            <p>Dear {selectedApp?.name || 'Miko'},</p>
-            <br />
-            <p>Thank you for your time and effort in preparing & attending our interviews.</p>
-            <br />
-            <p>We are pleased to offer you the role of <strong>{selectedApp?.job_role || 'Outbound Education Consultant'}</strong> with Geniebook Pte Ltd.</p>
-            <br />
-            <p>Details are as follows :</p>
-            
-            <table style={{ borderCollapse: 'collapse', width: '100%', border: '1px solid #000', marginTop: '10px' }}>
-              <tbody>
-                <tr><td style={{ border: '1px solid #000', padding: '12px', backgroundColor: '#D9E2F3', fontWeight: 'bold', width: '35%' }}>Monthly Salary</td><td style={{ border: '1px solid #000', padding: '12px' }}>${details.salary} (To be edited)</td></tr>
-                <tr>
-                  <td style={{ border: '1px solid #000', padding: '12px', backgroundColor: '#D9E2F3', fontWeight: 'bold' }}>Work Days</td>
-                  <td style={{ border: '1px solid #000', padding: '12px' }}>
-                    {currentSchedule.days} (To be Edited)
-                    <div style={{ marginTop: '8px', fontSize: '14px' }}>
-                      {currentSchedule.hours.split('\n').map((line, i) => <div key={i}>{line}</div>)}
-                    </div>
-                  </td>
-                </tr>
-                <tr><td style={{ border: '1px solid #000', padding: '12px', backgroundColor: '#D9E2F3', fontWeight: 'bold' }}>Join Date</td><td style={{ border: '1px solid #000', padding: '12px' }}>{details.joinDate} (To be edited)</td></tr>
-                <tr><td style={{ border: '1px solid #000', padding: '12px', backgroundColor: '#D9E2F3', fontWeight: 'bold' }}>Probation Period</td><td style={{ border: '1px solid #000', padding: '12px' }}>{details.probation} (To be edited)</td></tr>
-                <tr><td style={{ border: '1px solid #000', padding: '12px', backgroundColor: '#D9E2F3', fontWeight: 'bold' }}>Notice Period</td><td style={{ border: '1px solid #000', padding: '12px' }}>{details.noticePeriod} (To Be Edited)</td></tr>
-              </tbody>
-            </table>
-
-            <br />
-            {isFullTimeStaff && (
-              <div style={{ color: 'red', fontWeight: 'bold', fontStyle: 'italic' }}>
-                &lt;ONLY APPLIES TO SINGAPORE FULL TIME STAFF&gt;
-                <ul style={{ color: 'black', fontStyle: 'normal', fontWeight: 'normal', paddingLeft: '20px', marginTop: '5px' }}>
-                  <li>15 day's annual leave, with one additional day for every year of service, up to max 21 days</li>
-                  <li>1 Day Birthday Off on birthday month</li>
-                  <li>60 days Hospitalisation Leave inclusive of 14 day's Medical Leave</li>
-                  <li>Group Hospital & Surgical Insurance</li>
-                  <li>Group Outpatient</li>
-                  <li>Laptop + Company T-Shirt/s</li>
-                </ul>
-              </div>
-            )}
-
-            <p style={{ marginTop: '20px' }}>In addition,</p>
-            <p>Here is a checklist of documents I would require from you in the meantime, to submit for the generation of the Employment Contract.</p>
-            <br />
-            <p>Please save the files in the format of <span style={{ backgroundColor: '#00FF00', fontWeight: 'bold' }}>(Document Name) followed by (Name - As Per in NRIC) - do not consolidate:</span></p>
-            <ol style={{ paddingLeft: '25px', marginTop: '10px' }}>
-              <li><span style={{ backgroundColor: '#FFF2CC' }}>Attached</span> GB Personal Details Form - <i>Name as per NRIC</i></li>
-              <li><span style={{ backgroundColor: '#FFF2CC' }}>Attached</span> Conflict of Interest Policy Form - <i>Name as per NRIC</i></li>
-              <li><span style={{ backgroundColor: '#FFF2CC' }}>Attached</span> Declaration of Interest Form - <i>Name as per NRIC</i></li>
-              <li>Identity Card (Front & Back) - <i>Name as per NRIC</i></li>
-              <li>Deed Poll if your name has been changed before - <i>Name as per NRIC</i></li>
-              <li>Last 3 months payslip, or <span style={{ backgroundColor: '#FFFF00', fontWeight: 'bold' }}>CPF/EPF</span> contribution during the service period if payslip not available - <i>Name as per NRIC</i></li>
-              <li>Highest Qualification (Certificate) - <i>Name as per NRIC</i></li>
-              <li>Birth certificate of Child (if any) - <i>Name as per NRIC</i></li>
-              <li>Covid-19 Vaccination Report - <i>Name as per NRIC</i></li>
-              <li>Any Bank Account document with Bank Account Name/Logo, Account Number, and your Name (For Payroll Purpose) - <i>Name as per NRIC</i></li>
-            </ol>
-
-            <br />
-            <p>Feel free to let me know if you have any queries and notify me once you have submitted all the documents. {showTrainingCost && <span>Do take note that you will be required to pay for training costs of <strong>{trainingCostAmount}</strong> if you resign within 3 months or are terminated due to misconduct.</span>}</p>
-            <br />
-            <p>Lastly, we would appreciate it if you could consider our offer and acknowledge this email as a form of acceptance of the offer <strong>latest by {details.offerExpiry}</strong>.</p>
-            <br />
-            <p>Meanwhile, I am extremely excited for you to be part of this team!</p>
-            <br />
-            <p style={{ color: 'red', fontWeight: 'bold' }}>PS. Please take note that all matters relating to salary are confidential and should not be shared or communicated with non-authorised people.</p>
-          </div>
+           <div id="email-content" style={{ color: '#000', fontFamily: 'Arial, sans-serif', fontSize: '15px', lineHeight: '1.4' }}>
+              <p>Dear {selectedApp?.name || 'Candidate'},</p>
+              <br />
+              <p>Thank you for your time and effort in preparing & attending our interviews.</p>
+              <br />
+              <p>We are pleased to offer you the role of <strong>{selectedApp?.job_role || 'Outbound Education Consultant'}</strong> with Geniebook Pte Ltd.</p>
+              <br />
+              <p>Details are as follows :</p>
+              <table style={{ borderCollapse: 'collapse', width: '100%', border: '1px solid #000', marginTop: '10px' }}>
+                <tbody>
+                  <tr><td style={{ border: '1px solid #000', padding: '12px', backgroundColor: '#D9E2F3', fontWeight: 'bold', width: '35%' }}>Monthly Salary</td><td style={{ border: '1px solid #000', padding: '12px' }}>${details.salary}</td></tr>
+                  <tr>
+                    <td style={{ border: '1px solid #000', padding: '12px', backgroundColor: '#D9E2F3', fontWeight: 'bold' }}>Work Days</td>
+                    <td style={{ border: '1px solid #000', padding: '12px' }}>
+                      {currentSchedule.days}
+                      <div style={{ marginTop: '8px', fontSize: '14px' }}>
+                        {currentSchedule.hours.split('\n').map((line, i) => <div key={i}>{line}</div>)}
+                      </div>
+                    </td>
+                  </tr>
+                  <tr><td style={{ border: '1px solid #000', padding: '12px', backgroundColor: '#D9E2F3', fontWeight: 'bold' }}>Join Date</td><td style={{ border: '1px solid #000', padding: '12px' }}>{details.joinDate}</td></tr>
+                  <tr><td style={{ border: '1px solid #000', padding: '12px', backgroundColor: '#D9E2F3', fontWeight: 'bold' }}>Probation Period</td><td style={{ border: '1px solid #000', padding: '12px' }}>{details.probation}</td></tr>
+                  <tr><td style={{ border: '1px solid #000', padding: '12px', backgroundColor: '#D9E2F3', fontWeight: 'bold' }}>Notice Period</td><td style={{ border: '1px solid #000', padding: '12px' }}>{details.noticePeriod}</td></tr>
+                </tbody>
+              </table>
+              <br />
+              {isFullTimeStaff && (
+                <div style={{ color: 'red', fontWeight: 'bold', fontStyle: 'italic' }}>
+                  &lt;ONLY APPLIES TO SINGAPORE FULL TIME STAFF&gt;
+                  <ul style={{ color: 'black', fontStyle: 'normal', fontWeight: 'normal', paddingLeft: '20px', marginTop: '5px' }}>
+                    <li>15 day's annual leave, with one additional day for every year of service, up to max 21 days</li>
+                    <li>1 Day Birthday Off on birthday month</li>
+                    <li>60 days Hospitalisation Leave inclusive of 14 day's Medical Leave</li>
+                    <li>Group Hospital & Surgical Insurance</li>
+                    <li>Group Outpatient</li>
+                    <li>Laptop + Company T-Shirt/s</li>
+                  </ul>
+                </div>
+              )}
+              <p style={{ marginTop: '20px' }}>In addition,</p>
+              <p>Here is a checklist of documents I would require from you in the meantime, to submit for the generation of the Employment Contract.</p>
+              <br />
+              <p>Please save the files in the format of <span style={{ backgroundColor: '#00FF00', fontWeight: 'bold' }}>(Document Name) followed by (Name - As Per in NRIC) - do not consolidate:</span></p>
+              <ol style={{ paddingLeft: '25px', marginTop: '10px' }}>
+                <li><span style={{ backgroundColor: '#FFF2CC' }}>Attached</span> GB Personal Details Form - <i>Name as per NRIC</i></li>
+                <li><span style={{ backgroundColor: '#FFF2CC' }}>Attached</span> Conflict of Interest Policy Form - <i>Name as per NRIC</i></li>
+                <li><span style={{ backgroundColor: '#FFF2CC' }}>Attached</span> Declaration of Interest Form - <i>Name as per NRIC</i></li>
+                <li>Identity Card (Front & Back) - <i>Name as per NRIC</i></li>
+                <li>Deed Poll if your name has been changed before - <i>Name as per NRIC</i></li>
+                <li>Last 3 months payslip, or <span style={{ backgroundColor: '#FFFF00', fontWeight: 'bold' }}>CPF/EPF</span> contribution during the service period if payslip not available - <i>Name as per NRIC</i></li>
+                <li>Highest Qualification (Certificate) - <i>Name as per NRIC</i></li>
+                <li>Birth certificate of Child (if any) - <i>Name as per NRIC</i></li>
+                <li>Covid-19 Vaccination Report - <i>Name as per NRIC</i></li>
+                <li>Any Bank Account document with Bank Account Name/Logo, Account Number, and your Name (For Payroll Purpose) - <i>Name as per NRIC</i></li>
+              </ol>
+              <br />
+              <p>Feel free to let me know if you have any queries and notify me once you have submitted all the documents. {showTrainingCost && <span>Do take note that you will be required to pay for training costs of <strong>{trainingCostAmount}</strong> if you resign within 3 months or are terminated due to misconduct.</span>}</p>
+              <br />
+              <p>Lastly, we would appreciate it if you could consider our offer and acknowledge this email as a form of acceptance of the offer <strong>latest by {details.offerExpiry}</strong>.</p>
+              <br />
+              <p>Meanwhile, I am extremely excited for you to be part of this team!</p>
+              <br />
+              <p style={{ color: 'red', fontWeight: 'bold' }}>PS. Please take note that all matters relating to salary are confidential and should not be shared or communicated with non-authorised people.</p>
+           </div>
         </div>
       </div>
     </div>
