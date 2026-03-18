@@ -6,7 +6,7 @@ import { supabase } from '../db';
 export default function Layout({ children }) {
   const location = useLocation();
   
-  // Highlighting logic for active links
+  // Highlighting logic for active links (Kept your exact logic)
   const navLink = (path) => `flex items-center gap-2 px-3 py-2 rounded-xl font-bold text-sm transition-all ${
     location.pathname === path 
       ? 'bg-blue-50 text-blue-600 shadow-sm' 
@@ -22,7 +22,7 @@ export default function Layout({ children }) {
           <div className="flex items-center gap-8">
             <Link to="/" className="text-xl font-black text-blue-600 flex items-center gap-2">
               <span className="bg-blue-600 text-white p-1.5 rounded-xl shadow-lg shadow-blue-200">GB</span>
-              <span className="hidden lg:inline tracking-tighter uppercase italic">GenieBook ATS</span>
+              <span className="hidden lg:inline tracking-tighter uppercase italic text-sm">GenieBook ATS</span>
             </Link>
 
             {/* Main Navigation */}
@@ -30,6 +30,9 @@ export default function Layout({ children }) {
               <Link to="/" className={navLink('/')}>📊 Pipeline</Link>
               <Link to="/search" className={navLink('/search')}>🔍 Search</Link>
               <Link to="/calendar" className={navLink('/calendar')}>📅 Calendar</Link>
+              
+              {/* NEW TEAM SETTINGS LINK */}
+              <Link to="/team" className={navLink('/team')}>👥 Team</Link>
               
               {/* Internal Tools Group */}
               <div className="h-6 w-[1px] bg-slate-200 mx-2 hidden lg:block"></div>
@@ -60,6 +63,7 @@ export default function Layout({ children }) {
 
       {/* Main Page Container */}
       <main className="max-w-7xl mx-auto px-6 py-10">
+        {/* Kept your smooth animation wrapper */}
         <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
           {children}
         </div>
