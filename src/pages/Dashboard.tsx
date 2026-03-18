@@ -11,10 +11,6 @@ export default function Dashboard() {
   const [editId, setEditId] = useState(null);
   const [editData, setEditData] = useState({});
 
-  // New Candidate Modal States
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [newApp, setNewApp] = useState({ name: '', email: '', phone: '', job_role: '', last_drawn_salary: '', salary_expectation: '' });
-
   const fetchData = async () => {
     try {
       const { data } = await supabase.from('applicants').select('*').order('created_at', { ascending: false });
@@ -38,70 +34,59 @@ export default function Dashboard() {
     return themes[status] || 'bg-slate-400 text-white';
   };
 
-  // --- ADD NEW CANDIDATE WITH DUPLICATE CHECK ---
-  const handleCreateCandidate = async (e) => {
-    e.preventDefault();
-    const cleanEmail = (newApp.email || "").toLowerCase().trim();
-    const cleanPhone = (newApp.phone || "").replace(/[^0-9]/g, '');
-
-    // Check for duplicates in Email or Phone
-    const { data: existing } = await supabase
-      .from('applicants')
-      .select('name, status')
-      .or(`email.eq.${cleanEmail},phone.eq.${cleanPhone}`)
-      .maybeSingle();
-
-    if (existing) {
-      return alert(`❌ DUPLICATE FOUND: ${existing.name} is already in the system as "${existing.status}"`);
-    }
-
-    const { error } = await supabase.from('applicants').insert([{
-      ...newApp,
-      email: cleanEmail,
-      status: 'Applied',
-      status_history: [{ status: 'Applied', date: new Date().toISOString(), remarks: 'Manual Entry' }]
-    }]);
-
-    if (!error) {
-      setIsAddModalOpen(false);
-      setNewApp({ name: '', email: '', phone: '', job_role: '', last_drawn_salary: '', salary_expectation: '' });
-      fetchData();
-    }
-  };
-
-  // --- STATUS CHANGE (Gmail removed, kept Salary/Remarks) ---
+  // --- THE CORRECTED & SAFE STATUS CHANGE LOGIC ---
   const handleStatusChange = async (app, newStatus) => {
-    // Fetch fresh data to avoid history overwriting
-    const { data: freshApp } = await supabase.from('applicants').select('*').eq('id', app.id).single();
-    let remarks = freshApp.remarks || "";
-    let offeredSalary = freshApp.offered_salary || "";
+    // 1. Fetch Fresh Data (Prevents History Overwriting)
+    const { data: freshApp, error: fetchErr } = await supabase
+      .from('applicants')
+      .select('status_history, remarks')
+      .eq('id', app.id)
+      .single();
 
+    if (fetchErr) return alert("Sync Error: Could not fetch latest record.");
+
+    let remarks = freshApp.remarks || "";
+    let offeredSalary = null;
+    let resignDate = null;
+
+    // 2. Conditional Prompts
     if (newStatus === 'Offered') {
-      const sal = window.prompt("Enter Offered Salary:", offeredSalary);
+      const sal = window.prompt(`Enter Offered Salary for ${app.name}:`);
       if (sal === null) return;
       offeredSalary = sal;
     }
 
     if (['Blacklisted', 'Failed Interview', 'Resigned', 'Rejected Offer'].includes(newStatus)) {
-      const msg = window.prompt(`Enter remarks for ${newStatus}:`, remarks);
+      const msg = window.prompt(`Enter remarks/reason for ${newStatus}:`, remarks);
       if (msg === null) return;
       remarks = msg;
     }
 
-    const history = [...(freshApp.status_history || []), { 
-      status: newStatus, 
-      date: new Date().toISOString(), 
-      remarks,
-      salary: newStatus === 'Offered' ? offeredSalary : null 
-    }];
+    if (newStatus === 'Resigned') {
+      const rDate = window.prompt(`Effective Date (YYYY-MM-DD):`, new Date().toISOString().split('T')[0]);
+      if (rDate === null) return;
+      resignDate = rDate;
+    }
 
-    await supabase.from('applicants').update({ 
+    // 3. Construct the Rich History Entry
+    const newEntry = { 
       status: newStatus, 
-      status_history: history, 
-      remarks, 
-      offered_salary: offeredSalary 
+      date: new Date().toISOString(),
+      remarks: remarks || null,
+      salary: offeredSalary || null,
+      resign_date: resignDate || null
+    };
+
+    const updatedHistory = [...(freshApp.status_history || []), newEntry];
+
+    // 4. Atomic Update
+    const { error: updateErr } = await supabase.from('applicants').update({ 
+      status: newStatus, 
+      status_history: updatedHistory, 
+      remarks 
     }).eq('id', app.id);
     
+    if (updateErr) alert("Update Failed: " + updateErr.message);
     fetchData();
   };
 
@@ -127,22 +112,25 @@ export default function Dashboard() {
     return matchesSearch && a.status === filterStatus;
   });
 
+  if (loading) return <div className="h-screen flex items-center justify-center font-black text-blue-600 text-5xl animate-pulse italic uppercase tracking-tighter">GENIEBOOK</div>;
+
   return (
     <div className="max-w-7xl mx-auto px-6 py-12 space-y-8 pb-32">
       
-      {/* HEADER SECTION */}
+      {/* Header & Search */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <h1 className="text-5xl font-black text-slate-900 tracking-tighter italic uppercase">GenieBook <span className="text-blue-600">ATS</span></h1>
-          <button onClick={() => setIsAddModalOpen(true)} className="mt-4 px-10 py-5 bg-blue-600 text-white rounded-[2rem] font-black uppercase text-[10px] tracking-widest shadow-2xl hover:bg-slate-900 transition-all active:scale-95 border-b-4 border-blue-800">
-            + New Candidate
-          </button>
-        </div>
-        <input type="text" placeholder="Search name or role..." className="w-full md:w-80 bg-white px-8 py-5 rounded-[2.5rem] border border-slate-100 shadow-inner font-bold text-sm focus:ring-4 focus:ring-blue-50 outline-none transition-all" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+        <h1 className="text-5xl font-black text-slate-900 tracking-tighter italic uppercase">GenieBook <span className="text-blue-600">ATS</span></h1>
+        <input 
+          type="text" 
+          placeholder="Search name or role..." 
+          className="w-full md:w-80 bg-white px-8 py-5 rounded-[2rem] border border-slate-100 shadow-sm font-bold text-sm focus:ring-4 focus:ring-blue-50 outline-none transition-all"
+          value={searchTerm}
+          onChange={e => setSearchTerm(e.target.value)}
+        />
       </div>
 
-      {/* FILTER TABS */}
-      <div className="flex flex-wrap gap-2 bg-white p-3 rounded-[3rem] border border-slate-100 shadow-sm overflow-x-auto no-scrollbar">
+      {/* Filter Tabs */}
+      <div className="flex flex-wrap gap-2 bg-white p-3 rounded-[2.5rem] border border-slate-100 shadow-sm overflow-x-auto no-scrollbar">
         {Object.entries(counts).map(([label, count]) => (
           <button key={label} onClick={() => setFilterStatus(label)} className={`flex items-center gap-3 px-8 py-4 rounded-[1.5rem] text-[10px] font-black uppercase tracking-widest transition-all shrink-0 ${filterStatus === label ? 'bg-slate-900 text-white shadow-lg' : 'hover:bg-slate-50 text-slate-400'}`}>
             {label} <span className={`px-2.5 py-1 rounded-md text-[9px] ${filterStatus === label ? 'bg-white/20' : 'bg-slate-100 text-slate-500'}`}>{count}</span>
@@ -150,97 +138,111 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* CANDIDATE GRID */}
+      {/* Grid of Candidate Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
         {filtered.map(app => (
-          <div key={app.id} className="bg-white rounded-[4rem] border border-slate-100 shadow-xl flex flex-col hover:translate-y-[-10px] transition-all duration-300">
-            <div className={`p-10 pb-6 ${getStatusTheme(app.status)} rounded-t-[4rem]`}>
+          <div key={app.id} className="bg-white rounded-[3.5rem] border border-slate-100 shadow-xl overflow-hidden flex flex-col transition-all hover:translate-y-[-8px] hover:shadow-2xl">
+            
+            {/* Card Header (Colored) */}
+            <div className={`p-10 pb-6 ${getStatusTheme(app.status)} transition-colors duration-500`}>
               <div className="flex justify-between items-start">
-                <div className="flex-grow">
+                <div className="flex-grow space-y-1">
                   {editId === app.id ? (
-                    <input className="w-full text-xl font-black bg-white/20 rounded-xl px-3 py-1 outline-none text-white border-none" value={editData.name} onChange={e => setEditData({...editData, name: e.target.value})} />
+                    <>
+                      <input className="w-full text-xl font-black bg-white/20 rounded-xl px-3 py-1 outline-none text-white mb-2" value={editData.name} onChange={e => setEditData({...editData, name: e.target.value})} />
+                      <input className="w-full text-[10px] font-black uppercase bg-white/10 rounded-xl px-3 py-1 outline-none text-white/80" value={editData.job_role} onChange={e => setEditData({...editData, job_role: e.target.value})} />
+                    </>
                   ) : (
-                    <h2 className="text-3xl font-black tracking-tighter italic uppercase leading-none">{app.name}</h2>
+                    <>
+                      <h2 className="text-3xl font-black tracking-tighter italic uppercase">{app.name}</h2>
+                      <p className="text-[10px] font-black uppercase opacity-70 tracking-[0.2em]">{app.job_role || 'No Role'}</p>
+                    </>
                   )}
-                  <p className="text-[10px] font-black uppercase opacity-70 tracking-[0.2em] mt-1">{app.job_role}</p>
                 </div>
-                <button onClick={() => editId === app.id ? saveEdit() : (setEditId(app.id), setEditData(app))} className="p-4 bg-white/20 rounded-2xl hover:bg-white/40 transition-all">{editId === app.id ? '✔️' : '✏️'}</button>
+                <button onClick={() => editId === app.id ? saveEdit() : (setEditId(app.id), setEditData(app))} className="p-4 bg-white/20 rounded-2xl hover:bg-white/40 transition-all active:scale-90">
+                  {editId === app.id ? '✔️' : '✏️'}
+                </button>
               </div>
             </div>
 
+            {/* Card Content */}
             <div className="p-10 space-y-8 flex-grow">
               <div className="space-y-3">
-                <a href={`mailto:${app.email}`} className="flex items-center gap-3 bg-slate-50 p-5 rounded-[1.5rem] text-[11px] font-black text-slate-600 truncate uppercase border border-slate-100">📧 {app.email}</a>
-                <a href={`https://wa.me/${(app.phone || "").replace(/[^0-9]/g, '')}`} target="_blank" className="flex items-center gap-3 bg-emerald-50 p-5 rounded-[1.5rem] text-[11px] font-black text-emerald-700 uppercase border border-emerald-100">📱 {app.phone}</a>
+                <a href={`mailto:${app.email}`} className="flex items-center gap-4 bg-slate-50 p-5 rounded-[1.5rem] text-[11px] font-black text-slate-600 truncate hover:bg-slate-100 border border-slate-100 transition-all uppercase tracking-tight">
+                  <span className="text-lg">📧</span> {app.email || 'No Email'}
+                </a>
+                <a href={`https://wa.me/${(app.phone || '').replace(/[^0-9]/g, '')}`} target="_blank" className="flex items-center gap-4 bg-emerald-50 p-5 rounded-[1.5rem] text-[11px] font-black text-emerald-700 hover:bg-emerald-100 border border-emerald-100 transition-all uppercase tracking-tight">
+                  <span className="text-lg">📱</span> {app.phone || 'No Phone'}
+                </a>
               </div>
 
               <div className="flex gap-4">
                 <div className="flex-1 bg-slate-50 p-5 rounded-[1.5rem] border border-slate-100">
-                  <span className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Expected</span>
-                  <span className="text-sm font-black text-blue-600">${app.salary_expectation || '—'}</span>
+                  <span className="block text-[8px] font-black text-slate-400 uppercase mb-1 tracking-widest">Last Drawn</span>
+                  <span className="text-xs font-black text-slate-700">{app.last_drawn_salary || '—'}</span>
                 </div>
-                {app.offered_salary && (
-                  <div className="flex-1 bg-purple-50 p-5 rounded-[1.5rem] border border-purple-100">
-                    <span className="block text-[8px] font-black text-purple-400 uppercase tracking-widest mb-1">Offered</span>
-                    <span className="text-sm font-black text-purple-700">${app.offered_salary}</span>
-                  </div>
-                )}
+                <div className="flex-1 bg-slate-50 p-5 rounded-[1.5rem] border border-slate-100">
+                  <span className="block text-[8px] font-black text-slate-400 uppercase mb-1 tracking-widest">Expected</span>
+                  <span className="text-xs font-black text-blue-600">{app.salary_expectation || '—'}</span>
+                </div>
               </div>
 
-              <div className="relative group">
-                <select value={app.status} onChange={e => handleStatusChange(app, e.target.value)} className={`w-full py-5 rounded-[2rem] text-[11px] font-black uppercase text-center appearance-none cursor-pointer shadow-lg transition-all ${getStatusTheme(app.status)}`}>
-                  <option value="Applied">Applied</option>
-                  <option value="Interviewing">Interviewing</option>
-                  <option value="Offered">Offered</option>
-                  <option value="Hired">Hired</option>
-                  <option value="Rejected Offer">Rejected Offer</option>
-                  <option value="Failed Interview">Failed Interview</option>
-                  <option value="Resigned">Resigned</option>
-                  <option value="Blacklisted">Blacklisted</option>
-                </select>
-                <div className="absolute right-6 top-1/2 -translate-y-1/2 pointer-events-none opacity-40">▼</div>
+              {app.remarks && (
+                <div className="bg-slate-50 p-5 rounded-[1.5rem] border-l-8 border-slate-200 shadow-inner">
+                  <span className="block text-[8px] font-black text-slate-400 uppercase mb-2 italic tracking-tighter underline">Latest Admin Note</span>
+                  <p className="text-[11px] text-slate-600 font-bold italic leading-relaxed">"{app.remarks}"</p>
+                </div>
+              )}
+
+              {/* Status & History Control */}
+              <div className="space-y-4 pt-4">
+                <div className="relative">
+                  <select 
+                    value={app.status} 
+                    onChange={e => handleStatusChange(app, e.target.value)} 
+                    className={`w-full py-5 px-8 rounded-[2rem] text-[11px] font-black uppercase tracking-[0.2em] cursor-pointer border-none appearance-none text-center shadow-lg transition-all ${getStatusTheme(app.status)}`}
+                  >
+                    <option value="Applied">Applied</option>
+                    <option value="Interviewing">Interviewing</option>
+                    <option value="Offered">Offered</option>
+                    <option value="Hired">Hired</option>
+                    <option value="Rejected Offer">Rejected Offer</option>
+                    <option value="Failed Interview">Failed Interview</option>
+                    <option value="Resigned">Resigned</option>
+                    <option value="Blacklisted">Blacklisted</option>
+                  </select>
+                  <div className="absolute right-6 top-1/2 -translate-y-1/2 pointer-events-none opacity-50">▼</div>
+                </div>
+
+                <div className="flex gap-3">
+                  <a href={app.resume_metadata?.url} target="_blank" className="flex-1 text-center bg-slate-900 text-white py-5 rounded-[1.5rem] font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 transition-all">View Resume</a>
+                  <button onClick={() => setShowHistoryId(showHistoryId === app.id ? null : app.id)} className="px-6 bg-slate-50 rounded-[1.5rem] text-slate-400 font-black text-[10px] hover:text-blue-600 transition-all uppercase tracking-tighter">🕒 Hist</button>
+                </div>
               </div>
 
-              <div className="flex gap-3">
-                <a href={app.resume_metadata?.url} target="_blank" className="flex-[2] text-center bg-slate-900 text-white py-5 rounded-[1.5rem] font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 transition-all">View Resume</a>
-                <button onClick={() => setShowHistoryId(showHistoryId === app.id ? null : app.id)} className="flex-1 bg-slate-100 text-slate-400 rounded-[1.5rem] font-black text-[10px] uppercase tracking-widest hover:bg-blue-50 transition-all shadow-inner">🕒 Hist</button>
-              </div>
-
+              {/* EXPANDABLE RICH HISTORY */}
               {showHistoryId === app.id && (
-                <div className="mt-4 p-6 bg-slate-50 rounded-[2.5rem] border border-slate-100 space-y-3 max-h-40 overflow-y-auto no-scrollbar shadow-inner animate-in slide-in-from-top-2">
-                  {app.status_history?.map((h, i) => (
-                    <div key={i} className="flex justify-between text-[10px] font-bold border-b pb-2 border-slate-200">
-                      <span className="uppercase text-slate-800 tracking-tight">{h.status}</span>
-                      <span className="text-slate-400 italic font-medium">{new Date(h.date).toLocaleDateString()}</span>
-                    </div>
-                  ))}
+                <div className="mt-4 p-6 bg-slate-50 rounded-[2.5rem] border border-slate-100 space-y-4 animate-in fade-in zoom-in duration-300">
+                   <p className="text-[10px] font-black text-slate-900 uppercase tracking-widest border-b border-slate-200 pb-2 italic">Detailed Timeline</p>
+                   <div className="max-h-[200px] overflow-y-auto pr-2 space-y-4 no-scrollbar">
+                     {app.status_history?.map((h, i) => (
+                       <div key={i} className="border-l-2 border-slate-200 pl-4 py-1">
+                          <div className="flex justify-between items-center mb-1">
+                            <span className="text-[10px] font-black text-slate-800 uppercase tracking-tighter">{h.status}</span>
+                            <span className="text-[8px] font-bold text-slate-400">{new Date(h.date).toLocaleDateString()}</span>
+                          </div>
+                          {h.salary && <div className="text-[9px] font-black text-emerald-600 italic">Offer: ${h.salary}</div>}
+                          {h.remarks && <div className="text-[9px] font-bold text-slate-500 italic mt-1 leading-tight">"{h.remarks}"</div>}
+                          {h.resign_date && <div className="text-[9px] font-black text-rose-600">Effective: {h.resign_date}</div>}
+                       </div>
+                     ))}
+                   </div>
                 </div>
               )}
             </div>
           </div>
         ))}
       </div>
-
-      {/* INLINE ADD MODAL */}
-      {isAddModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-xl z-[500] flex items-center justify-center p-8">
-          <div className="bg-white w-full max-w-xl rounded-[4.5rem] p-16 space-y-8 shadow-[0_50px_100px_rgba(0,0,0,0.4)] border-4 border-white animate-in zoom-in duration-300">
-            <h2 className="text-5xl font-black italic uppercase tracking-tighter">New Pipeline Entry</h2>
-            <form onSubmit={handleCreateCandidate} className="space-y-6">
-              <input required placeholder="Candidate Full Name" className="w-full p-6 bg-slate-50 rounded-[2rem] font-bold outline-none shadow-inner" value={newApp.name} onChange={e => setNewApp({...newApp, name: e.target.value})} />
-              <div className="grid grid-cols-2 gap-6">
-                <input required type="email" placeholder="Email" className="w-full p-6 bg-slate-50 rounded-[2rem] font-bold outline-none shadow-inner" value={newApp.email} onChange={e => setNewApp({...newApp, email: e.target.value})} />
-                <input required placeholder="Phone Number" className="w-full p-6 bg-slate-50 rounded-[2rem] font-bold outline-none shadow-inner" value={newApp.phone} onChange={e => setNewApp({...newApp, phone: e.target.value})} />
-              </div>
-              <input required placeholder="Target Job Role" className="w-full p-6 bg-slate-50 rounded-[2rem] font-bold outline-none shadow-inner" value={newApp.job_role} onChange={e => setNewApp({...newApp, job_role: e.target.value})} />
-              <div className="flex gap-6 pt-6">
-                <button type="button" onClick={() => setIsAddModalOpen(false)} className="flex-1 py-7 bg-slate-100 text-slate-400 rounded-[2.5rem] font-black uppercase text-[12px] tracking-widest hover:bg-slate-200 transition-all">Discard</button>
-                <button type="submit" className="flex-[2] py-7 bg-blue-600 text-white rounded-[2.5rem] font-black uppercase text-[12px] tracking-widest shadow-2xl shadow-blue-200 active:scale-95 transition-all">Save Profile</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
