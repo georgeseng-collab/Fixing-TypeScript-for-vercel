@@ -46,18 +46,17 @@ export default function ApprovalHub() {
   useEffect(() => { fetchData(); }, []);
 
   const fetchData = async () => {
-    // CRITICAL: Ensure these column names match your Supabase 'applicants' table exactly
+    // FIX: Restored the proper filter for candidates
     const { data: apps } = await supabase.from('applicants')
-      .select('*') 
-      .in('status', ['Offered', 'Offer Accepted', 'Interviewing'])
+      .select('*')
+      .in('status', ['Offered', 'Offer Accepted'])
       .order('name');
     
     const { data: team } = await supabase.from('team_members').select('name, email').order('name');
-    
+    const { data: hist } = await supabase.from('salary_approval_history').select('*').order('sent_at', { ascending: false });
+
     setApplicants(apps || []);
     setTeamMembers(team || []);
-
-    const { data: hist } = await supabase.from('salary_approval_history').select('*').order('sent_at', { ascending: false });
     setHistory(hist || []);
   };
 
@@ -65,7 +64,7 @@ export default function ApprovalHub() {
     setSelectedId(id);
     const app = applicants.find(a => a.id === id);
     if (app) {
-      // PROPOSED: Auto-set to offered_salary
+      // Proposed Sal automatically pulls from the Dashboard 'offered_salary' field
       setDetails(prev => ({...prev, proposedSal: app.offered_salary || 0 }));
     }
   };
@@ -86,13 +85,9 @@ export default function ApprovalHub() {
 
   const n = (val) => Number(val) || 0;
   
-  // --- ROBUST DATA MAPPING WITH FALLBACKS ---
-  // If last_drawn_salary is empty, it checks current_salary
-  const currentSal = n(selectedApp?.last_drawn_salary || selectedApp?.current_salary || 0);
-  
-  // If expected_salary is empty, it checks salary_expectation
-  const expectedSal = n(selectedApp?.expected_salary || selectedApp?.salary_expectation || 0);
-  
+  // --- TABLE DATA MAPPING ---
+  const currentSal = n(selectedApp?.last_drawn_salary || selectedApp?.current_salary);
+  const expectedSal = n(selectedApp?.expected_salary || selectedApp?.salary_expectation);
   const proposedSal = n(details.proposedSal);
   const proposedAllow = n(details.proposedAllowance);
   const months = n(details.monthsPaid);
@@ -118,7 +113,11 @@ export default function ApprovalHub() {
       await navigator.clipboard.write(data);
       setCopyStatus(true);
       
-      await supabase.from('salary_approval_history').insert([{ applicant_id: selectedApp.id, applicant_name: selectedApp.name, salary: details.proposedSal }]);
+      await supabase.from('salary_approval_history').insert([{ 
+        applicant_id: selectedApp.id, 
+        applicant_name: selectedApp.name, 
+        salary: details.proposedSal 
+      }]);
       
       const allCC = [defaultCC, ...selectedCC].join(',');
       const subject = `Hiring & Salary Approval Request - ${selectedApp.name}`;
@@ -132,6 +131,8 @@ export default function ApprovalHub() {
 
   return (
     <div className="max-w-[1600px] mx-auto px-8 py-10 pb-40 text-slate-900">
+      
+      {/* HEADER SECTION */}
       <div className="flex justify-between items-end mb-12 border-b-[10px] border-slate-900 pb-10">
         <div>
           <h1 className="text-7xl font-black uppercase italic tracking-tighter text-slate-900 leading-none">Approval Hub</h1>
@@ -157,14 +158,9 @@ export default function ApprovalHub() {
                   <option value="">Choose Candidate...</option>
                   {applicants.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
-                {selectedApp && (
-                  <div className="ml-4 mt-2 space-y-1">
-                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">DB Last Drawn: ${selectedApp.last_drawn_salary || selectedApp.current_salary || '0'}</p>
-                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">DB Expected: ${selectedApp.expected_salary || selectedApp.salary_expectation || '0'}</p>
-                  </div>
-                )}
               </div>
 
+              {/* CC TEAM MEMBERS SECTION */}
               <div className="space-y-1 p-4 bg-slate-50 rounded-3xl border-2 border-slate-100">
                 <label className="text-[9px] font-black uppercase text-slate-400 italic block mb-2 tracking-widest">CC Additional Team</label>
                 <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto no-scrollbar">
@@ -180,7 +176,7 @@ export default function ApprovalHub() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className={labelClass}>Proposed Sal (Offered)</label>
+                  <label className={labelClass}>Proposed Monthly Sal</label>
                   <input className={`${inputClass} bg-blue-50 text-blue-600`} type="number" value={details.proposedSal} onChange={e => setDetails({...details, proposedSal: e.target.value})} />
                 </div>
                 <div className="space-y-1">
@@ -214,7 +210,7 @@ export default function ApprovalHub() {
           </div>
 
           <div className="bg-slate-900 rounded-[3rem] p-10 text-white min-h-[300px]">
-             <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-400 mb-6 italic underline">Approval History</h3>
+             <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-400 mb-6 italic underline">History Log</h3>
              <div className="space-y-3 max-h-[400px] overflow-y-auto no-scrollbar pr-2">
                {history.map(h => (
                  <div key={h.id} className="group bg-slate-800/50 p-5 rounded-2xl flex justify-between items-center border border-transparent hover:border-slate-700 transition-all">
