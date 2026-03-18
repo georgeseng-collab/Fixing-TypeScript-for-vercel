@@ -7,6 +7,7 @@ export default function EmailHub() {
   const [selectedId, setSelectedId] = useState('');
   const [isFullTimeStaff, setIsFullTimeStaff] = useState(true); 
   const [isSingaporean, setIsSingaporean] = useState(true); 
+  const [copyStatus, setCopyStatus] = useState(false);
   
   const schedules = {
     "Sales (Fixed)": { type: 'sales', days: "3 weekdays + 2 weekends", hours: "• Weekdays (Mon - Thurs) : 12.30pm - 8.30pm\n• Weekdays (Fri) : 12pm - 9pm\n• Weekends (Sat - Sun) : 11am - 9pm" },
@@ -18,11 +19,11 @@ export default function EmailHub() {
   };
 
   const [details, setDetails] = useState({
-    salary: '2700',
+    salary: '3000',
     scheduleKey: "Sales (Fixed)",
     joinDate: '2026-04-06',
     probation: '3 Months',
-    noticePeriod: '1 month',
+    noticePeriod: '1 day (Sales)',
     offerExpiry: '2026-03-20'
   });
 
@@ -40,37 +41,43 @@ export default function EmailHub() {
   const trainingCostAmount = isSingaporean ? "$2,000" : "$1,000";
 
   const handleGmailDispatch = async () => {
-    if (!selectedApp) return alert("Please select a candidate first.");
+    if (!selectedId) return alert("Please select a candidate first.");
+    const emailContent = document.getElementById('email-content');
+    const type = "text/html";
+    const blob = new Blob([emailContent.innerHTML], { type });
+    const data = [new ClipboardItem({ [type]: blob })];
 
-    const el = document.getElementById('email-content');
-    const range = document.createRange();
-    range.selectNode(el);
-    window.getSelection().removeAllRanges();
-    window.getSelection().addRange(range);
-    document.execCommand('copy');
-    window.getSelection().removeAllRanges();
-
-    const role = selectedApp.job_role || 'Outbound Education Consultant';
-    const name = selectedApp.name || 'Candidate';
-    const subject = `Congratulations_Offered (${role}) _ ${name}`;
-    const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${selectedApp.email}&su=${encodeURIComponent(subject)}`;
-    
-    await supabase.from('applicants').update({ status: 'Offered' }).eq('id', selectedApp.id);
-    window.open(gmailUrl, '_blank');
+    try {
+      await navigator.clipboard.write(data);
+      setCopyStatus(true);
+      const role = selectedApp?.job_role || 'Outbound Education Consultant';
+      const name = selectedApp?.name || 'Candidate';
+      const subject = `Congratulations_Offered (${role}) _ ${name}`;
+      const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${selectedApp?.email}&su=${encodeURIComponent(subject)}`;
+      
+      await supabase.from('applicants').update({ status: 'Offered' }).eq('id', selectedApp.id);
+      
+      setTimeout(() => {
+        window.open(gmailUrl, '_blank');
+        setCopyStatus(false);
+      }, 800);
+    } catch (err) {
+      alert("Auto-copy failed. Please manually select and copy the preview.");
+    }
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-10 pb-40">
+    <div className="max-w-7xl mx-auto px-6 py-10 pb-40 font-sans text-slate-900">
       <div className="flex justify-between items-center mb-10 border-b-8 border-slate-900 pb-8">
-        <h1 className="text-5xl font-black uppercase italic tracking-tighter">Offer Hub</h1>
+        <h1 className="text-5xl font-black uppercase italic tracking-tighter">Offer Generator</h1>
         <div className="flex gap-4">
-           <div className="bg-slate-200 p-1 rounded-2xl flex gap-1">
-              <button onClick={() => setIsFullTimeStaff(true)} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase ${isFullTimeStaff ? 'bg-white shadow text-blue-600' : 'text-slate-400'}`}>Full Time</button>
-              <button onClick={() => setIsFullTimeStaff(false)} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase ${!isFullTimeStaff ? 'bg-white shadow text-blue-600' : 'text-slate-400'}`}>Part Time</button>
+           <div className="bg-slate-200 p-1.5 rounded-2xl flex gap-1">
+              <button onClick={() => setIsFullTimeStaff(true)} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${isFullTimeStaff ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}>Full Time Staff</button>
+              <button onClick={() => setIsFullTimeStaff(false)} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase ${!isFullTimeStaff ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}>Part Time</button>
            </div>
-           <div className="bg-slate-200 p-1 rounded-2xl flex gap-1">
-              <button onClick={() => setIsSingaporean(true)} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase ${isSingaporean ? 'bg-white shadow text-emerald-600' : 'text-slate-400'}`}>Singaporean</button>
-              <button onClick={() => setIsSingaporean(false)} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase ${!isSingaporean ? 'bg-white shadow text-emerald-600' : 'text-slate-400'}`}>Malaysian</button>
+           <div className="bg-slate-200 p-1.5 rounded-2xl flex gap-1">
+              <button onClick={() => setIsSingaporean(true)} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${isSingaporean ? 'bg-white shadow text-emerald-600' : 'text-slate-500'}`}>Singaporean</button>
+              <button onClick={() => setIsSingaporean(false)} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase ${!isSingaporean ? 'bg-white shadow text-emerald-600' : 'text-slate-500'}`}>Malaysian</button>
            </div>
         </div>
       </div>
@@ -78,27 +85,27 @@ export default function EmailHub() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
         <div className="lg:col-span-4 space-y-4 sticky top-24 h-fit">
           <div className="bg-white p-8 rounded-[3.5rem] shadow-2xl border-4 border-slate-900 space-y-6">
-            <select className="w-full p-5 bg-slate-50 rounded-[1.5rem] font-bold outline-none" value={selectedId} onChange={e => setSelectedId(e.target.value)}>
+            <select className="w-full p-5 bg-slate-50 rounded-[1.5rem] font-bold outline-none border-2 border-transparent focus:border-blue-600" value={selectedId} onChange={e => setSelectedId(e.target.value)}>
               <option value="">Select Candidate...</option>
               {applicants.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
             
-            <div className="grid grid-cols-2 gap-4">
-              <input className="p-5 bg-slate-50 rounded-[1.5rem] font-bold text-sm" placeholder="Salary" value={details.salary} onChange={e => setDetails({...details, salary: e.target.value})} />
-              <input type="date" className="p-5 bg-slate-50 rounded-[1.5rem] font-bold text-sm" value={details.joinDate} onChange={e => setDetails({...details, joinDate: e.target.value})} />
-            </div>
-
             <select className="w-full p-5 bg-slate-50 rounded-[1.5rem] font-bold outline-none" value={details.scheduleKey} onChange={e => setDetails({...details, scheduleKey: e.target.value})}>
               {Object.keys(schedules).map(k => <option key={k} value={k}>{k}</option>)}
             </select>
 
             <div className="grid grid-cols-2 gap-4">
-              <input className="p-5 bg-slate-50 rounded-[1.5rem] font-bold text-sm" placeholder="Notice" value={details.noticePeriod} onChange={e => setDetails({...details, noticePeriod: e.target.value})} />
-              <input type="date" className="p-5 bg-slate-50 rounded-[1.5rem] font-bold text-sm" value={details.offerExpiry} onChange={e => setDetails({...details, offerExpiry: e.target.value})} />
+              <input className="p-5 bg-slate-50 rounded-[1.5rem] font-bold text-sm shadow-inner" placeholder="Monthly Salary" value={details.salary} onChange={e => setDetails({...details, salary: e.target.value})} />
+              <input type="date" className="p-5 bg-slate-50 rounded-[1.5rem] font-bold text-sm shadow-inner" value={details.joinDate} onChange={e => setDetails({...details, joinDate: e.target.value})} />
             </div>
 
-            <button onClick={handleGmailDispatch} className="w-full py-8 bg-red-600 text-white rounded-[2.5rem] font-black uppercase tracking-[0.2em] shadow-xl hover:bg-slate-900 transition-all active:scale-95">
-              <span>🚀 DISPATCH TO GMAIL</span>
+            <div className="grid grid-cols-2 gap-4">
+              <input className="p-5 bg-slate-50 rounded-[1.5rem] font-bold text-sm shadow-inner" placeholder="Notice Period" value={details.noticePeriod} onChange={e => setDetails({...details, noticePeriod: e.target.value})} />
+              <input type="date" className="p-5 bg-slate-50 rounded-[1.5rem] font-bold text-sm shadow-inner" value={details.offerExpiry} onChange={e => setDetails({...details, offerExpiry: e.target.value})} />
+            </div>
+
+            <button onClick={handleGmailDispatch} disabled={copyStatus} className={`w-full py-8 text-white rounded-[2.5rem] font-black uppercase tracking-[0.2em] shadow-xl transition-all active:scale-95 ${copyStatus ? 'bg-emerald-500' : 'bg-red-600 hover:bg-slate-900'}`}>
+              {copyStatus ? '✅ READY TO PASTE!' : '🚀 DISPATCH TO GMAIL'}
             </button>
           </div>
         </div>
@@ -115,19 +122,19 @@ export default function EmailHub() {
             
             <table style={{ borderCollapse: 'collapse', width: '100%', border: '1px solid #000', marginTop: '10px' }}>
               <tbody>
-                <tr><td style={{ border: '1px solid #000', padding: '12px', backgroundColor: '#D9E2F3', fontWeight: 'bold', width: '35%' }}>Monthly Salary</td><td style={{ border: '1px solid #000', padding: '12px' }}>${details.salary}</td></tr>
+                <tr><td style={{ border: '1px solid #000', padding: '12px', backgroundColor: '#D9E2F3', fontWeight: 'bold', width: '35%' }}>Monthly Salary</td><td style={{ border: '1px solid #000', padding: '12px' }}>${details.salary} (To be edited)</td></tr>
                 <tr>
                   <td style={{ border: '1px solid #000', padding: '12px', backgroundColor: '#D9E2F3', fontWeight: 'bold' }}>Work Days</td>
                   <td style={{ border: '1px solid #000', padding: '12px' }}>
-                    {currentSchedule.days}
-                    <ul style={{ margin: '8px 0 0 0', paddingLeft: '20px' }}>
-                      {currentSchedule.hours.split('\n').map((line, i) => <li key={i} style={{ fontStyle: 'italic' }}>{line.replace('• ', '')}</li>)}
-                    </ul>
+                    {currentSchedule.days} (To be Edited)
+                    <div style={{ marginTop: '8px', fontSize: '14px' }}>
+                      {currentSchedule.hours.split('\n').map((line, i) => <div key={i}>{line}</div>)}
+                    </div>
                   </td>
                 </tr>
-                <tr><td style={{ border: '1px solid #000', padding: '12px', backgroundColor: '#D9E2F3', fontWeight: 'bold' }}>Join Date</td><td style={{ border: '1px solid #000', padding: '12px' }}>{details.joinDate}</td></tr>
-                <tr><td style={{ border: '1px solid #000', padding: '12px', backgroundColor: '#D9E2F3', fontWeight: 'bold' }}>Probation Period</td><td style={{ border: '1px solid #000', padding: '12px' }}>{details.probation}</td></tr>
-                <tr><td style={{ border: '1px solid #000', padding: '12px', backgroundColor: '#D9E2F3', fontWeight: 'bold' }}>Notice Period</td><td style={{ border: '1px solid #000', padding: '12px' }}>{details.noticePeriod}</td></tr>
+                <tr><td style={{ border: '1px solid #000', padding: '12px', backgroundColor: '#D9E2F3', fontWeight: 'bold' }}>Join Date</td><td style={{ border: '1px solid #000', padding: '12px' }}>{details.joinDate} (To be edited)</td></tr>
+                <tr><td style={{ border: '1px solid #000', padding: '12px', backgroundColor: '#D9E2F3', fontWeight: 'bold' }}>Probation Period</td><td style={{ border: '1px solid #000', padding: '12px' }}>{details.probation} (To be edited)</td></tr>
+                <tr><td style={{ border: '1px solid #000', padding: '12px', backgroundColor: '#D9E2F3', fontWeight: 'bold' }}>Notice Period</td><td style={{ border: '1px solid #000', padding: '12px' }}>{details.noticePeriod} (To Be Edited)</td></tr>
               </tbody>
             </table>
 
@@ -135,7 +142,7 @@ export default function EmailHub() {
             {isFullTimeStaff && (
               <div style={{ color: 'red', fontWeight: 'bold', fontStyle: 'italic' }}>
                 &lt;ONLY APPLIES TO SINGAPORE FULL TIME STAFF&gt;
-                <ul style={{ color: 'black', fontStyle: 'normal', fontWeight: 'normal', paddingLeft: '20px' }}>
+                <ul style={{ color: 'black', fontStyle: 'normal', fontWeight: 'normal', paddingLeft: '20px', marginTop: '5px' }}>
                   <li>15 day's annual leave, with one additional day for every year of service, up to max 21 days</li>
                   <li>1 Day Birthday Off on birthday month</li>
                   <li>60 days Hospitalisation Leave inclusive of 14 day's Medical Leave</li>
