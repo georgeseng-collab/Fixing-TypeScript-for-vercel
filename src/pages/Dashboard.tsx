@@ -39,16 +39,15 @@ export default function Dashboard() {
 
   const getStatusTheme = (status) => {
     const themes = {
-      'Hired': 'bg-emerald-600 text-white',
-      'Offer Accepted': 'bg-blue-600 text-white',
-      'Offered': 'bg-purple-600 text-white',
-      'Interviewing': 'bg-amber-500 text-white',
-      'Applied': 'bg-slate-900 text-white',
+      'Hired': 'bg-emerald-50 text-emerald-700 border-emerald-100',
+      'Offer Accepted': 'bg-blue-50 text-blue-700 border-blue-100',
+      'Offered': 'bg-purple-50 text-purple-700 border-purple-100',
+      'Interviewing': 'bg-amber-50 text-amber-700 border-amber-100',
+      'Applied': 'bg-slate-50 text-slate-700 border-slate-100',
     };
-    return themes[status] || 'bg-slate-400 text-white';
+    return themes[status] || 'bg-slate-50 text-slate-500';
   };
 
-  // Stats Logic - Matches your previous clickable functionality
   const stats = {
     All: applicants.filter(a => !['Blacklisted', 'Resigned', 'Failed Interview'].includes(a.status)).length,
     Applied: applicants.filter(a => a.status === 'Applied').length,
@@ -63,91 +62,99 @@ export default function Dashboard() {
     const matchesSearch = (a.name || "").toLowerCase().includes(searchTerm.toLowerCase()) || 
                           (a.job_role || "").toLowerCase().includes(searchTerm.toLowerCase());
     const isArchived = ['Failed Interview', 'Blacklisted', 'Resigned', 'Rejected Offer'].includes(a.status);
-    
     if (filterStatus === 'Archive') return matchesSearch && isArchived;
     if (filterStatus === 'All') return matchesSearch && !isArchived;
     return matchesSearch && a.status === filterStatus;
   });
 
-  if (loading) return <div className="h-screen flex items-center justify-center font-black text-blue-600 text-5xl animate-pulse italic uppercase tracking-tighter">GENIEBOOK</div>;
+  if (loading) return (
+    <div className="h-screen flex items-center justify-center bg-white">
+      <div className="text-4xl font-black text-slate-900 animate-pulse tracking-tighter uppercase italic">GENIEBOOK</div>
+    </div>
+  );
 
   return (
-    <div className="max-w-[1600px] mx-auto px-8 py-12 space-y-12 pb-40">
+    <div className="max-w-[1600px] mx-auto px-10 py-12 space-y-12 pb-40 font-sans">
       
       {/* HEADER & SEARCH */}
-      <div className="flex flex-col lg:flex-row justify-between items-end gap-6 border-b-[10px] border-slate-900 pb-10">
-        <div>
-          <h1 className="text-8xl font-black uppercase italic tracking-tighter text-slate-900 leading-none">Dashboard</h1>
-          <p className="text-[11px] font-black text-blue-600 uppercase tracking-[0.4em] mt-4 ml-2">Geniebook Talent OS</p>
+      <div className="flex flex-col lg:flex-row justify-between items-center gap-6">
+        <div className="text-center lg:text-left">
+          <h1 className="text-5xl font-black text-slate-900 tracking-tight leading-none">Dashboard</h1>
+          <p className="text-slate-400 font-medium mt-2">Manage your recruitment pipeline</p>
         </div>
-        <input 
-          type="text" 
-          placeholder="Search Candidate..." 
-          className="w-full lg:w-96 bg-white px-8 py-6 rounded-3xl border-4 border-slate-900 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] font-bold text-sm outline-none focus:translate-y-1 focus:shadow-none transition-all"
-          value={searchTerm}
-          onChange={e => setSearchTerm(e.target.value)}
-        />
+        <div className="relative w-full lg:w-96">
+          <input 
+            type="text" 
+            placeholder="Search candidates..." 
+            className="w-full bg-slate-100 px-6 py-4 rounded-2xl border border-transparent focus:border-blue-500 focus:bg-white outline-none transition-all shadow-sm font-medium"
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+          />
+        </div>
       </div>
 
       {/* CLICKABLE STATS BAR */}
-      <div className="flex flex-wrap gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
         {Object.entries(stats).map(([label, count]) => (
           <button 
             key={label} 
             onClick={() => setFilterStatus(label)}
-            className={`flex-1 min-w-[150px] bg-white border-4 border-slate-900 p-6 rounded-[2.5rem] shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all hover:-translate-y-1 active:translate-y-1 active:shadow-none ${filterStatus === label ? 'bg-slate-900 text-white' : 'text-slate-900'}`}
+            className={`p-6 rounded-3xl transition-all border-2 text-left ${
+                filterStatus === label 
+                ? 'bg-slate-900 border-slate-900 text-white shadow-xl translate-y-[-4px]' 
+                : 'bg-white border-slate-100 text-slate-900 hover:border-slate-300'
+            }`}
           >
-            <p className={`text-[10px] font-black uppercase tracking-widest ${filterStatus === label ? 'text-blue-400' : 'text-slate-400'}`}>{label}</p>
-            <p className="text-4xl font-black italic">{count}</p>
+            <p className={`text-[10px] font-bold uppercase tracking-widest mb-1 ${filterStatus === label ? 'text-blue-400' : 'text-slate-400'}`}>{label}</p>
+            <p className="text-3xl font-black">{count}</p>
           </button>
         ))}
       </div>
 
-      {/* CANDIDATE GRID */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-12">
+      {/* GRID */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
         {filtered.map(app => {
           const hasOfferSent = offerHistory.includes(app.id);
           const hasApprovalSent = approvalHistory.includes(app.id);
           const isContractDone = app.contract_generated;
-          // Logic for "Onboard Now" button appearance
           const canOnboard = hasOfferSent && hasApprovalSent && isContractDone && app.status === 'Offer Accepted';
 
           return (
-            <div key={app.id} className="bg-white rounded-[4rem] border-4 border-slate-900 shadow-[14px_14px_0px_0px_rgba(15,23,42,1)] overflow-hidden flex flex-col transition-all hover:translate-y-[-6px]">
+            <div key={app.id} className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-xl transition-all flex flex-col group overflow-hidden">
               
-              {/* CARD HEADER */}
-              <div className={`p-10 pb-8 ${getStatusTheme(app.status)} border-b-4 border-slate-900 relative`}>
-                <div className="flex justify-between items-start gap-4">
-                  <div className="overflow-hidden">
-                    <h2 className="text-4xl font-black tracking-tighter italic uppercase truncate leading-none mb-1">{app.name}</h2>
-                    <p className="text-[10px] font-black uppercase opacity-70 tracking-widest">{app.job_role || 'General Role'}</p>
-                  </div>
-                  <div className="flex gap-2 shrink-0">
-                    <a href={`mailto:${app.email}`} className="w-12 h-12 flex items-center justify-center bg-white/20 rounded-2xl hover:bg-white/40 transition-all text-xl">📧</a>
-                    <a href={`https://wa.me/${app.phone?.replace(/[^0-9]/g, '')}`} target="_blank" className="w-12 h-12 flex items-center justify-center bg-white/20 rounded-2xl hover:bg-white/40 transition-all text-xl">💬</a>
+              {/* CARD TOP */}
+              <div className="p-8 border-b border-slate-50">
+                <div className="flex justify-between items-start mb-4">
+                  <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${getStatusTheme(app.status)}`}>
+                    {app.status}
+                  </span>
+                  <div className="flex gap-2">
+                    <a href={`mailto:${app.email}`} className="text-slate-300 hover:text-blue-500 transition-colors">📧</a>
+                    <a href={`https://wa.me/${app.phone?.replace(/[^0-9]/g, '')}`} target="_blank" className="text-slate-300 hover:text-emerald-500 transition-colors">💬</a>
                   </div>
                 </div>
+                <h2 className="text-2xl font-bold text-slate-900 truncate">{app.name}</h2>
+                <p className="text-sm font-semibold text-slate-400 mt-0.5 uppercase tracking-wide">{app.job_role}</p>
               </div>
 
-              <div className="p-10 space-y-8 flex-grow">
-                
-                {/* TRACKER LOGIC */}
+              <div className="p-8 space-y-6 flex-grow">
+                {/* TRACKERS */}
                 {(app.status === 'Offered' || app.status === 'Offer Accepted') && (
-                  <div className="bg-slate-50 p-8 rounded-[3rem] border-2 border-slate-200 space-y-4 shadow-inner">
-                    <div className="flex items-center justify-between text-[11px] font-black uppercase tracking-tight">
-                      <span className="text-slate-400 italic">1. Offer Hub</span>
-                      <span className={hasOfferSent ? "text-emerald-600" : "text-slate-300"}>{hasOfferSent ? "● SENT" : "○ PENDING"}</span>
+                  <div className="bg-slate-50 rounded-3xl p-6 space-y-4">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-slate-500 uppercase tracking-tighter">Offer Email</span>
+                      <span className={hasOfferSent ? "text-emerald-600 font-black" : "text-slate-300 font-bold"}>{hasOfferSent ? "✓ SENT" : "○ PENDING"}</span>
                     </div>
-                    <div className="flex items-center justify-between text-[11px] font-black uppercase tracking-tight">
-                      <span className="text-slate-400 italic">2. Approval Hub</span>
-                      <span className={hasApprovalSent ? "text-blue-600" : "text-slate-300"}>{hasApprovalSent ? "● SENT" : "○ PENDING"}</span>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-slate-500 uppercase tracking-tighter">Internal Approval</span>
+                      <span className={hasApprovalSent ? "text-blue-600 font-black" : "text-slate-300 font-bold"}>{hasApprovalSent ? "✓ SENT" : "○ PENDING"}</span>
                     </div>
                     <button 
-                      onClick={() => toggleContract(app.id, isContractDone)}
-                      className={`w-full flex justify-between items-center px-6 py-4 rounded-2xl border-2 transition-all font-black text-[10px] uppercase tracking-widest mt-2 ${isContractDone ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-300 border-slate-100 hover:border-slate-300'}`}
+                        onClick={() => toggleContract(app.id, isContractDone)} 
+                        className={`w-full flex justify-between items-center px-4 py-2.5 rounded-xl border transition-all text-[11px] font-black uppercase ${isContractDone ? 'bg-slate-900 border-slate-900 text-white' : 'bg-white border-slate-200 text-slate-400'}`}
                     >
-                      <span>3. Contract Done</span>
-                      <span className="text-lg">{isContractDone ? '✓' : '○'}</span>
+                      <span>Contract Status</span>
+                      <span>{isContractDone ? 'READY' : 'PENDING'}</span>
                     </button>
                   </div>
                 )}
@@ -155,49 +162,44 @@ export default function Dashboard() {
                 {/* ONBOARD BUTTON */}
                 {canOnboard && (
                   <button 
-                    onClick={() => handleStatusChange(app.id, 'Hired')}
-                    className="w-full py-6 bg-emerald-500 text-white rounded-[2rem] border-4 border-slate-900 font-black uppercase tracking-[0.2em] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-slate-900 transition-all animate-pulse"
+                    onClick={() => handleStatusChange(app.id, 'Hired')} 
+                    className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest shadow-lg shadow-blue-100 hover:bg-slate-900 transition-all transform hover:scale-[1.02]"
                   >
                     🚀 Onboard Now
                   </button>
                 )}
 
-                {/* SALARY STATS */}
+                {/* SALARY INFO */}
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-slate-50 p-5 rounded-3xl border border-slate-100">
-                    <span className="block text-[9px] font-black text-slate-400 uppercase mb-1">Current</span>
-                    <span className="text-sm font-black text-slate-900">${app.current_salary || '0'}</span>
+                  <div className="p-4 bg-slate-50 rounded-2xl">
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Last Drawn</span>
+                    <span className="text-md font-bold text-slate-700">${app.current_salary || app.last_drawn_salary || '0'}</span>
                   </div>
-                  <div className="bg-slate-50 p-5 rounded-3xl border border-slate-100">
-                    <span className="block text-[9px] font-black text-slate-400 uppercase mb-1">Expected</span>
-                    <span className="text-sm font-black text-blue-600">${app.expected_salary || '0'}</span>
+                  <div className="p-4 bg-slate-50 rounded-2xl">
+                    <span className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Expected</span>
+                    <span className="text-md font-bold text-blue-600">${app.expected_salary || app.salary_expectation || '0'}</span>
                   </div>
                 </div>
 
                 {/* STATUS SELECTOR */}
-                <div className="space-y-4">
-                  <div className="relative">
-                    <select 
-                      value={app.status} 
-                      onChange={e => handleStatusChange(app.id, e.target.value)}
-                      className={`w-full py-5 rounded-2xl text-[11px] font-black uppercase border-4 border-slate-900 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] outline-none appearance-none text-center cursor-pointer transition-all ${getStatusTheme(app.status)}`}
-                    >
-                      {stages.map(s => <option key={s} value={s} className="text-black bg-white">{s}</option>)}
-                      <optgroup label="Archive">
-                        <option value="Failed Interview" className="text-black bg-white">Failed Interview</option>
-                        <option value="Rejected Offer" className="text-black bg-white">Rejected Offer</option>
-                        <option value="Resigned" className="text-black bg-white">Resigned</option>
-                        <option value="Blacklisted" className="text-black bg-white">Blacklisted</option>
-                      </optgroup>
-                    </select>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <a href={app.resume_metadata?.url} target="_blank" className="flex-1 text-center bg-white border-4 border-slate-900 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-900 hover:text-white transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">Resume</a>
-                    <button onClick={() => fetchData()} className="px-6 bg-slate-50 rounded-2xl border-4 border-slate-900 font-black hover:bg-slate-900 hover:text-white transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">↻</button>
-                  </div>
+                <div className="flex gap-2">
+                  <select 
+                    value={app.status} 
+                    onChange={e => handleStatusChange(app.id, e.target.value)} 
+                    className="flex-1 bg-slate-100 border-none p-4 rounded-2xl text-xs font-bold text-slate-700 outline-none cursor-pointer hover:bg-slate-200 transition-all appearance-none text-center"
+                  >
+                    {stages.map(s => <option key={s} value={s}>{s}</option>)}
+                    <optgroup label="Archive">
+                      <option value="Failed Interview">Failed Interview</option>
+                      <option value="Rejected Offer">Rejected Offer</option>
+                      <option value="Resigned">Resigned</option>
+                      <option value="Blacklisted">Blacklisted</option>
+                    </optgroup>
+                  </select>
+                  <a href={app.resume_metadata?.url} target="_blank" className="p-4 bg-slate-900 text-white rounded-2xl text-xs font-bold hover:bg-blue-600 transition-all">
+                    Resume
+                  </a>
                 </div>
-
               </div>
             </div>
           );
