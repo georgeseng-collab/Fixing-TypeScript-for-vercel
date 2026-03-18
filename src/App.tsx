@@ -10,6 +10,7 @@ import CalendarView from './pages/CalendarView';
 import CandidateSearch from './pages/CandidateSearch';
 import Archive from './pages/Archive';
 import Login from './pages/Login';
+import EmailHub from './pages/EmailHub'; // <--- ADDED THIS IMPORT
 
 export default function App() {
   const [session, setSession] = useState(undefined);
@@ -37,6 +38,9 @@ export default function App() {
         <Route path="/search" element={session ? <Layout><CandidateSearch /></Layout> : <Navigate to="/login" />} />
         <Route path="/calendar" element={session ? <Layout><CalendarView /></Layout> : <Navigate to="/login" />} />
         <Route path="/archive" element={session ? <Layout><Archive /></Layout> : <Navigate to="/login" />} />
+        
+        {/* NEW OFFER GENERATOR ROUTE */}
+        <Route path="/offers" element={session ? <Layout><EmailHub /></Layout> : <Navigate to="/login" />} />
         
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>

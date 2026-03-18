@@ -22,6 +22,8 @@ export default function Layout({ children }) {
               <Link to="/" className={navLink('/')}>📊 Pipeline</Link>
               <Link to="/search" className={navLink('/search')}>🔍 Search</Link>
               <Link to="/calendar" className={navLink('/calendar')}>📅 Calendar</Link>
+              {/* ADDED OFFER GENERATOR LINK BELOW */}
+              <Link to="/offers" className={navLink('/offers')}>✨ Offer Hub</Link>
               <Link to="/archive" className={navLink('/archive')}>🗄️ Archive</Link>
             </div>
           </div>
