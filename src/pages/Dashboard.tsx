@@ -19,7 +19,6 @@ export default function Dashboard() {
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [activeApp, setActiveApp] = useState(null);
   const [modalType, setModalType] = useState(''); 
-  // ADDED: offered_salary to formData state
   const [formData, setFormData] = useState({ status: '', remarks: '', date: '', offered_salary: '' });
 
   const stages = ['Applied', 'Interviewing', 'Offered', 'Offer Accepted', 'Hired'];
@@ -39,23 +38,28 @@ export default function Dashboard() {
 
   useEffect(() => { fetchData(); }, []);
 
-  // UPDATED: Now handles offered_salary update
-  const updateStatus = async (id, status, remarks, date, offered_salary) => {
+  const updateStatus = async (id, status, remarks, date, offered_salary, isReset = false) => {
     try {
-      const { data: currentApp } = await supabase.from('applicants').select('status_history').eq('id', id).single();
+      const { data: currentApp } = await supabase.from('applicants').select('status_history, remarks, resignation_date').eq('id', id).single();
+      
       const historyEntry = { 
         status, 
         date: new Date().toISOString(), 
-        remarks: remarks || "Status Updated", 
+        remarks: remarks || (isReset ? "Candidate Reset to Applied" : "Status Updated"), 
         leaving_date: date || null,
         offered_salary: offered_salary || null 
       };
-      const updatedHistory = [...(currentApp?.status_history || []), historyEntry];
-      const updatePayload = { status, status_history: updatedHistory };
 
-      if (remarks) updatePayload.remarks = remarks;
-      if (date) updatePayload.resignation_date = date;
-      // Update the main offered_salary field in the database
+      const updatedHistory = [...(currentApp?.status_history || []), historyEntry];
+      
+      // If resetting, we explicitly clear the archive fields (remarks and resignation_date)
+      const updatePayload = { 
+        status, 
+        status_history: updatedHistory,
+        remarks: isReset ? null : (remarks || currentApp.remarks),
+        resignation_date: isReset ? null : (date || currentApp.resignation_date)
+      };
+
       if (offered_salary) updatePayload.offered_salary = offered_salary;
 
       const { error } = await supabase.from('applicants').update(updatePayload).eq('id', id);
@@ -71,7 +75,6 @@ export default function Dashboard() {
     setActiveApp(app);
     const today = new Date().toISOString().split('T')[0];
     
-    // NEW: Intercept 'Offered' to show salary prompt
     if (newStatus === 'Offered') {
       setModalType('offer');
       setFormData({ status: newStatus, remarks: '', date: '', offered_salary: app.offered_salary || '' });
@@ -140,30 +143,22 @@ export default function Dashboard() {
   });
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-12 space-y-8 pb-32 relative text-slate-900">
+    <div className="max-w-7xl mx-auto px-6 py-12 space-y-8 pb-32 relative text-slate-900 font-sans">
       
-      {/* MODALS */}
+      {/* MODALS SECTION */}
       {showStatusModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-4">
           <div className="bg-white border-8 border-slate-900 w-full max-w-lg rounded-[3rem] shadow-[20px_20px_0px_0px_rgba(0,0,0,1)] p-10 space-y-6">
             <h2 className="text-4xl font-black uppercase italic tracking-tighter">
-              {modalType === 'offer' ? '💸 Monthly Offer' : 'Status Update'}
+               {modalType === 'offer' ? '💸 Salary Offer' : 'Status Update'}
             </h2>
             <div className="space-y-4">
-              {/* NEW: Offer Salary Input field */}
               {modalType === 'offer' && (
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase ml-2 text-blue-600 italic">Confirmed Salary Amount ($)</label>
-                  <input 
-                    type="number" 
-                    placeholder="e.g. 5500"
-                    className="w-full p-5 bg-blue-50 border-4 border-slate-900 rounded-2xl font-black text-2xl outline-none" 
-                    value={formData.offered_salary} 
-                    onChange={e => setFormData({...formData, offered_salary: e.target.value})} 
-                  />
+                  <label className="text-[10px] font-black uppercase ml-2 text-blue-600 italic">Monthly Salary Offered ($)</label>
+                  <input type="number" placeholder="e.g. 5000" className="w-full p-5 bg-blue-50 border-4 border-slate-900 rounded-2xl font-black text-xl outline-none" value={formData.offered_salary} onChange={e => setFormData({...formData, offered_salary: e.target.value})} />
                 </div>
               )}
-
               {modalType === 'resigned' && (
                 <div className="space-y-2">
                   <label className="text-[10px] font-black uppercase ml-2 text-slate-400">Date of Leaving</label>
@@ -177,12 +172,7 @@ export default function Dashboard() {
             </div>
             <div className="flex gap-4">
               <button onClick={() => setShowStatusModal(false)} className="flex-1 py-5 border-4 border-slate-900 rounded-2xl font-black uppercase text-xs">Cancel</button>
-              <button 
-                onClick={() => updateStatus(activeApp.id, formData.status, formData.remarks, formData.date, formData.offered_salary)} 
-                className="flex-1 py-5 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs shadow-[4px_4px_0px_0px_rgba(59,130,246,1)]"
-              >
-                Confirm
-              </button>
+              <button onClick={() => updateStatus(activeApp.id, formData.status, formData.remarks, formData.date, formData.offered_salary)} className="flex-1 py-5 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs shadow-[4px_4px_0px_0px_rgba(59,130,246,1)]">Confirm</button>
             </div>
           </div>
         </div>
@@ -192,7 +182,7 @@ export default function Dashboard() {
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/95 backdrop-blur-md p-4 text-white">
           <div className="bg-slate-900 border-8 border-white/10 w-full max-w-2xl rounded-[4rem] p-12 relative overflow-hidden">
             <h2 className="text-5xl font-black uppercase italic tracking-tighter mb-2">Journey Log</h2>
-            <div className="max-h-[400px] overflow-y-auto space-y-6 pr-4">
+            <div className="max-h-[400px] overflow-y-auto space-y-6 pr-4 no-scrollbar">
               {(activeApp?.status_history || []).map((h, i) => (
                 <div key={i} className="relative pl-8 border-l-4 border-white/10 py-2">
                   <div className="absolute -left-[10px] top-4 w-4 h-4 rounded-full bg-blue-500" />
@@ -200,8 +190,7 @@ export default function Dashboard() {
                     <span className="text-xl font-black uppercase tracking-tighter italic">{h.status}</span>
                     <span className="text-[10px] font-bold text-white/30">{new Date(h.date).toLocaleDateString()}</span>
                   </div>
-                  {/* Show salary in history if it exists */}
-                  {h.offered_salary && <p className="text-xs font-black text-emerald-400 mb-1 uppercase tracking-widest">Offered Salary: ${h.offered_salary}</p>}
+                  {h.offered_salary && <p className="text-xs font-black text-emerald-400 mb-1">OFFERED: ${h.offered_salary}</p>}
                   {h.remarks && <p className="text-sm font-medium text-white/60 bg-white/5 p-4 rounded-2xl italic">"{h.remarks}"</p>}
                 </div>
               ))}
@@ -211,7 +200,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Header */}
+      {/* HEADER SECTION */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b-8 border-slate-900 pb-8">
         <h1 className="text-7xl font-black text-slate-900 tracking-tighter italic uppercase leading-none">Dashboard</h1>
         <input 
@@ -223,7 +212,7 @@ export default function Dashboard() {
         />
       </div>
 
-      {/* Stats Bar */}
+      {/* STATS SECTION */}
       <div className="flex flex-wrap gap-3">
         {Object.entries(stats).map(([label, count]) => (
           <button key={label} onClick={() => setFilterStatus(label)} className={`flex-1 min-w-[140px] p-6 rounded-[2rem] border-4 border-slate-900 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all ${filterStatus === label ? 'bg-slate-900 text-white shadow-none translate-x-1 translate-y-1' : 'bg-white text-slate-900'}`}>
@@ -233,7 +222,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Grid */}
+      {/* APPLICANT GRID */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12">
         {filtered.map(app => {
           const isReady = offerHistory.includes(app.id) && approvalHistory.includes(app.id) && app.contract_generated;
@@ -243,7 +232,6 @@ export default function Dashboard() {
             <div key={app.id} className="bg-white rounded-[4rem] border-4 border-slate-900 shadow-[14px_14px_0px_0px_rgba(15,23,42,1)] overflow-hidden flex flex-col transition-all hover:-translate-y-2">
               
               <div className={`p-10 pb-8 ${getStatusTheme(app.status)} border-b-4 border-slate-900 relative`}>
-                  {/* NEW: Floating Emerald Badge for Offered Salary */}
                   {app.offered_salary && !isArchived && (
                     <div className="absolute top-6 right-6 bg-emerald-400 border-2 border-slate-900 px-3 py-1 rounded-full text-[10px] font-black text-slate-900 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
                       OFFER: ${app.offered_salary}
@@ -265,6 +253,7 @@ export default function Dashboard() {
               </div>
 
               <div className="p-10 space-y-8 flex-grow">
+                {/* CONTACT INFO */}
                 <div className="space-y-3">
                   {editId === app.id ? (
                     <div className="space-y-2">
@@ -283,27 +272,23 @@ export default function Dashboard() {
                   )}
                 </div>
 
+                {/* STATUS & JOURNEY LOGIC */}
                 {isArchived ? (
-                  <div className="bg-slate-900 p-8 rounded-[3.5rem] space-y-5 text-white shadow-inner">
-                    {app.status === 'Resigned' && <div className="space-y-1"><span className="text-[9px] font-black text-blue-400 uppercase italic">Date of Leaving</span><p className="text-sm font-bold text-rose-400 italic">{app.resignation_date || 'N/A'}</p></div>}
-                    <div className="space-y-1"><span className="text-[9px] font-black text-blue-400 uppercase italic">Reason / Remarks</span><p className="text-xs italic opacity-80 leading-relaxed font-medium line-clamp-4">"{app.remarks || 'No remarks.'}"</p></div>
+                  <div className="space-y-6">
+                    <div className="bg-slate-900 p-8 rounded-[3.5rem] space-y-5 text-white shadow-inner">
+                      {app.status === 'Resigned' && <div className="space-y-1"><span className="text-[9px] font-black text-blue-400 uppercase italic">Date of Leaving</span><p className="text-sm font-bold text-rose-400 italic">{app.resignation_date || 'N/A'}</p></div>}
+                      <div className="space-y-1"><span className="text-[9px] font-black text-blue-400 uppercase italic">Reason / Remarks</span><p className="text-xs italic opacity-80 leading-relaxed font-medium line-clamp-4">"{app.remarks || 'No remarks.'}"</p></div>
+                    </div>
+                    {/* RESET BUTTON */}
+                    <button onClick={() => updateStatus(app.id, 'Applied', '', '', '', true)} className="w-full py-6 bg-white text-slate-900 rounded-[2.5rem] border-4 border-slate-900 font-black uppercase text-[11px] tracking-widest shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:bg-blue-600 hover:text-white transition-all">🔄 Reset to Applied</button>
                   </div>
                 ) : (
                   <div className="space-y-6">
                     {(app.status === 'Offered' || app.status === 'Offer Accepted') && (
                       <div className="bg-slate-50 p-6 rounded-[2.5rem] border-2 border-slate-900 space-y-4 shadow-inner">
-                        <div className="flex justify-between text-[11px] font-black uppercase italic">
-                           <span className="text-slate-400 underline italic">1. Offer Hub</span>
-                           <span className={offerHistory.includes(app.id) ? "text-emerald-600" : "text-slate-300"}>{offerHistory.includes(app.id) ? "● SENT" : "○ PENDING"}</span>
-                        </div>
-                        <div className="flex justify-between text-[11px] font-black uppercase italic">
-                           <span className="text-slate-400 underline italic">2. Approval Hub</span>
-                           <span className={approvalHistory.includes(app.id) ? "text-blue-600" : "text-slate-300"}>{approvalHistory.includes(app.id) ? "● SENT" : "○ PENDING"}</span>
-                        </div>
-                        <button onClick={() => toggleContract(app.id, app.contract_generated)} className={`w-full flex justify-between px-6 py-4 rounded-2xl border-2 font-black text-[11px] uppercase border-slate-900 transition-all ${app.contract_generated ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-300'}`}>
-                          <span>3. Contract Done</span>
-                          <span>{app.contract_generated ? '✓' : '○'}</span>
-                        </button>
+                        <div className="flex justify-between text-[11px] font-black uppercase italic"><span className="text-slate-400 underline italic">1. Offer Hub</span><span className={offerHistory.includes(app.id) ? "text-emerald-600" : "text-slate-300"}>{offerHistory.includes(app.id) ? "● SENT" : "○ PENDING"}</span></div>
+                        <div className="flex justify-between text-[11px] font-black uppercase italic"><span className="text-slate-400 underline italic">2. Approval Hub</span><span className={approvalHistory.includes(app.id) ? "text-blue-600" : "text-slate-300"}>{approvalHistory.includes(app.id) ? "● SENT" : "○ PENDING"}</span></div>
+                        <button onClick={() => toggleContract(app.id, app.contract_generated)} className={`w-full flex justify-between px-6 py-4 rounded-2xl border-2 font-black text-[11px] uppercase border-slate-900 transition-all ${app.contract_generated ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-300'}`}><span>3. Contract Done</span><span>{app.contract_generated ? '✓' : '○'}</span></button>
                       </div>
                     )}
 
@@ -312,27 +297,16 @@ export default function Dashboard() {
                     ) : (
                       <select value={app.status} onChange={e => handleStatusSelect(app, e.target.value)} className={`w-full py-6 rounded-[2.5rem] text-[12px] font-black uppercase border-4 border-slate-900 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] text-center appearance-none cursor-pointer ${getStatusTheme(app.status)}`}>
                         {app.status === 'Hired' ? (
-                          <>
-                            <option value="Hired">Hired (Onboarded)</option>
-                            <option value="Offer Accepted">Move Back to Offer</option>
-                            <option value="Resigned">Resigned</option>
-                          </>
+                          <><option value="Hired">Hired (Onboarded)</option><option value="Offer Accepted">Move Back to Offer</option><option value="Resigned">Resigned</option></>
                         ) : (
-                          <>
-                            {stages.map(s => <option key={s} value={s}>{s}</option>)}
-                            <optgroup label="Archive">
-                              <option value="Failed Interview">Failed Interview</option>
-                              <option value="Rejected Offer">Rejected Offer</option>
-                              <option value="Blacklisted">Blacklisted</option>
-                            </optgroup>
-                          </>
+                          <>{stages.map(s => <option key={s} value={s}>{s}</option>)}<optgroup label="Archive"><option value="Failed Interview">Failed Interview</option><option value="Rejected Offer">Rejected Offer</option><option value="Blacklisted">Blacklisted</option></optgroup></>
                         )}
                       </select>
                     )}
                   </div>
                 )}
 
-                {/* Salaries */}
+                {/* SALARY INFO SECTION */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-slate-50 p-5 rounded-[1.5rem] border-2 border-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-center">
                     <span className="block text-[9px] font-black text-slate-400 uppercase mb-1 italic">Last Drawn</span>
@@ -352,15 +326,11 @@ export default function Dashboard() {
                   </div>
                 </div>
 
+                {/* ACTION ICONS SECTION */}
                 <div className="flex gap-4">
                   <a href={app.resume_metadata?.url} target="_blank" className="flex-1 flex justify-center items-center bg-white border-4 border-slate-900 py-5 rounded-[2rem] shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:bg-slate-900 hover:text-white transition-all text-2xl">📄</a>
                   <button onClick={() => { setActiveApp(app); setShowHistoryModal(true); }} className="flex-1 flex justify-center items-center bg-slate-50 rounded-[2rem] border-4 border-slate-900 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:bg-blue-500 hover:text-white transition-all text-2xl">🕒</button>
-                  <button 
-                    onClick={() => editId === app.id ? saveEdit() : (setEditId(app.id), setEditData(app))}
-                    className={`flex-1 flex justify-center items-center rounded-[2rem] border-4 border-slate-900 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all text-2xl ${editId === app.id ? 'bg-emerald-500 text-white animate-pulse' : 'bg-white text-slate-900 hover:bg-slate-900 hover:text-white'}`}
-                  >
-                    {editId === app.id ? '✔️' : '✏️'}
-                  </button>
+                  <button onClick={() => editId === app.id ? saveEdit() : (setEditId(app.id), setEditData(app))} className={`flex-1 flex justify-center items-center rounded-[2rem] border-4 border-slate-900 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all text-2xl ${editId === app.id ? 'bg-emerald-500 text-white animate-pulse' : 'bg-white text-slate-900 hover:bg-slate-900 hover:text-white'}`}>{editId === app.id ? '✔️' : '✏️'}</button>
                 </div>
               </div>
             </div>
