@@ -68,9 +68,13 @@ export default function CalendarView() {
     if (!selectedApp) return alert("Select candidate");
     setIsSyncing(true);
 
+    // FIX: Only include selected team members and custom emails. 
+    // Candidate email is EXCLUDED from the invite list.
     const finalGuestList = [...selectedGuests];
-    if (customGuest.trim()) finalGuestList.push(customGuest.trim());
-    if (selectedApp.email) finalGuestList.push(selectedApp.email);
+    if (customGuest.trim()) {
+      const additional = customGuest.split(',').map(e => e.trim());
+      finalGuestList.push(...additional);
+    }
 
     try {
       let base64File = "";
@@ -102,7 +106,7 @@ export default function CalendarView() {
           time: formTime,
           fileName,
           fileBase64: base64File,
-          guests: finalGuestList.join(',')
+          guests: finalGuestList.join(',') // Only team/manual guests sent to Google
         })
       });
 
@@ -119,24 +123,37 @@ export default function CalendarView() {
       await supabase.from('applicants').update({ status: 'Interviewing', status_history: updatedHistory }).eq('id', selectedApp.id);
 
       setShowModal(false);
-      setSelectedGuests([]);
-      setCustomGuest('');
+      resetForm();
       fetchData();
     } catch (err) { alert(err.message); }
     finally { setIsSyncing(false); }
   };
 
-  if (loading) return <div className="h-screen flex items-center justify-center font-black text-blue-600 text-4xl italic animate-pulse">GENIEBOOK SCHEDULE...</div>;
+  const resetForm = () => {
+    setSelectedGuests([]);
+    setCustomGuest('');
+    setResumeFile(null);
+    setSearchCandidate('');
+  };
+
+  if (loading) return (
+    <div className="h-screen flex items-center justify-center font-black text-blue-600 text-4xl italic animate-pulse">
+      GENIEBOOK SECURE BOOT...
+    </div>
+  );
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-10 pb-32">
-      {/* Header */}
+      {/* Header Container */}
       <div className="bg-white p-10 rounded-[3rem] border-4 border-slate-900 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex justify-between items-center mb-10">
-        <h1 className="text-5xl font-black text-slate-900 italic tracking-tighter uppercase">Scheduler</h1>
+        <div>
+          <h1 className="text-5xl font-black text-slate-900 italic tracking-tighter uppercase">Scheduler</h1>
+          <p className="text-[10px] font-black uppercase text-slate-400 tracking-[0.3em] mt-2">Internal Sync Only</p>
+        </div>
         <button onClick={() => { setIsManagementMode(false); setStep(1); setShowModal(true); }} className="bg-blue-600 text-white px-8 py-4 rounded-2xl border-4 border-slate-900 font-black text-xs uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-slate-900 transition-all">+ New Schedule</button>
       </div>
 
-      {/* Calendar container */}
+      {/* Calendar Area */}
       <div className="bg-white p-8 rounded-[3rem] border-4 border-slate-900 shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] h-[800px]">
         <Calendar localizer={localizer} events={events} selectable defaultView="week"
           onSelectEvent={(e) => { setSelectedApp(e.candidate); setSelectedEventId(e.id); setIsManagementMode(true); setStep(2); setShowModal(true); }}
@@ -145,29 +162,37 @@ export default function CalendarView() {
         />
       </div>
 
-      {/* FIXED SCROLLING MODAL */}
+      {/* Modal with fixed scrolling for candidate list */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-xl rounded-[3rem] border-8 border-slate-900 shadow-[20px_20px_0px_0px_rgba(0,0,0,1)] flex flex-col max-h-[85vh] overflow-hidden">
             
-            {/* Modal Header */}
             <div className={`p-8 text-white flex justify-between items-center shrink-0 ${isManagementMode ? 'bg-blue-600' : 'bg-slate-900'}`}>
               <h3 className="text-3xl font-black italic uppercase tracking-tighter">{isManagementMode ? 'Manage' : 'Step ' + step}</h3>
-              <button onClick={() => setShowModal(false)} className="text-2xl font-black hover:scale-110 transition-transform">✕</button>
+              <button onClick={() => setShowModal(false)} className="text-2xl font-black hover:scale-110">✕</button>
             </div>
 
-            {/* Scrollable Body */}
-            <div className="p-8 space-y-6 overflow-y-auto custom-scrollbar flex-grow bg-slate-50/50">
+            <div className="p-8 space-y-6 overflow-y-auto no-scrollbar flex-grow bg-slate-50/50">
               {step === 1 ? (
                 <div className="space-y-4">
-                  <div className="sticky top-0 bg-white/80 backdrop-blur-md pb-2 z-10">
-                     <input type="text" placeholder="Search candidate..." className="w-full p-5 border-4 border-slate-900 rounded-2xl font-black outline-none uppercase text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]" value={searchCandidate} onChange={e => setSearchCandidate(e.target.value)} />
+                  <div className="sticky top-0 bg-white/90 backdrop-blur-md pb-4 z-10">
+                     <input 
+                       type="text" 
+                       placeholder="Search name, job, or email..." 
+                       className="w-full p-5 border-4 border-slate-900 rounded-2xl font-black outline-none uppercase text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]" 
+                       value={searchCandidate} 
+                       onChange={e => setSearchCandidate(e.target.value)} 
+                     />
                   </div>
                   <div className="grid gap-3">
                     {applicants
-                      .filter(a => a.name.toLowerCase().includes(searchCandidate.toLowerCase()))
+                      .filter(a => 
+                        a.name.toLowerCase().includes(searchCandidate.toLowerCase()) ||
+                        (a.job_role || "").toLowerCase().includes(searchCandidate.toLowerCase()) ||
+                        (a.email || "").toLowerCase().includes(searchCandidate.toLowerCase())
+                      )
                       .map(app => (
-                        <button key={app.id} onClick={() => { setSelectedApp(app); setStep(2); }} className="w-full text-left p-5 bg-white hover:bg-blue-50 rounded-2xl border-4 border-slate-900 flex justify-between items-center transition-all group">
+                        <button key={app.id} onClick={() => { setSelectedApp(app); setStep(2); }} className="w-full text-left p-5 bg-white hover:bg-blue-50 rounded-2xl border-4 border-slate-900 flex justify-between items-center transition-all group shadow-sm hover:shadow-md">
                           <div>
                             <div className="font-black text-slate-900 text-lg uppercase italic leading-none">{app.name}</div>
                             <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{app.job_role}</div>
@@ -180,43 +205,58 @@ export default function CalendarView() {
               ) : (
                 <div className="space-y-6">
                   <div className="bg-slate-900 p-6 rounded-2xl text-white shadow-[6px_6px_0px_0px_rgba(37,99,235,1)]">
-                    <p className="text-[10px] font-black text-blue-400 uppercase mb-1 italic">Confirmed Target</p>
+                    <p className="text-[10px] font-black text-blue-400 uppercase mb-1 italic">Target Candidate</p>
                     <div className="text-2xl font-black italic uppercase leading-none">{selectedApp?.name}</div>
+                    <p className="text-[10px] text-white/40 mt-2 font-bold uppercase tracking-widest">{selectedApp?.job_role}</p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
-                      <label className="text-[9px] font-black uppercase text-slate-400 ml-2">Date</label>
+                      <label className="text-[9px] font-black uppercase text-slate-400 ml-2 italic">Date</label>
                       <input type="date" className="w-full p-4 border-4 border-slate-900 rounded-2xl font-black text-xs outline-none" value={formDate} onChange={e => setFormDate(e.target.value)} />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[9px] font-black uppercase text-slate-400 ml-2">Time</label>
+                      <label className="text-[9px] font-black uppercase text-slate-400 ml-2 italic">Time</label>
                       <input type="time" className="w-full p-4 border-4 border-slate-900 rounded-2xl font-black text-xs outline-none" value={formTime} onChange={e => setFormTime(e.target.value)} />
                     </div>
                   </div>
 
                   <div className="space-y-3">
-                    <label className="text-[10px] font-black uppercase text-slate-400 ml-2 italic tracking-widest">Invite Interviewers (From Team Table)</label>
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-2 italic tracking-widest">Internal Guest List (Team Only)</label>
                     <div className="flex flex-wrap gap-2">
                       {teamMembers.map(member => (
-                        <button key={member.email} onClick={() => toggleGuest(member.email)}
-                          className={`px-4 py-2 rounded-xl border-4 font-black text-[10px] uppercase transition-all ${selectedGuests.includes(member.email) ? 'bg-slate-900 text-white border-slate-900 scale-105 shadow-md' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-900'}`}
+                        <button 
+                          key={member.email} 
+                          onClick={() => toggleGuest(member.email)}
+                          className={`px-4 py-2 rounded-xl border-4 font-black text-[10px] uppercase transition-all ${selectedGuests.includes(member.email) ? 'bg-slate-900 text-white border-slate-900 scale-105' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-900'}`}
                         >
                           {member.name}
                         </button>
                       ))}
                     </div>
-                    <input type="text" placeholder="Add custom guest email..." className="w-full p-4 border-2 border-slate-200 rounded-xl font-bold text-xs outline-none focus:border-slate-900 mt-2" value={customGuest} onChange={e => setCustomGuest(e.target.value)} />
+                    <input 
+                      type="text" 
+                      placeholder="Add custom internal email..." 
+                      className="w-full p-4 border-2 border-slate-200 rounded-xl font-bold text-xs outline-none focus:border-slate-900 mt-2" 
+                      value={customGuest} 
+                      onChange={e => setCustomGuest(e.target.value)} 
+                    />
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Update Resume (Optional)</label>
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-2 italic">Update Attachment</label>
                     <input type="file" className="w-full p-3 bg-white border-2 border-slate-200 rounded-xl text-[10px] font-bold" onChange={(e) => setResumeFile(e.target.files?.[0] || null)} />
                   </div>
 
                   <div className="flex flex-col gap-3 pt-6 border-t-4 border-slate-100">
-                    <button onClick={handleSave} className="w-full py-5 bg-blue-600 text-white rounded-2xl border-4 border-slate-900 font-black text-sm uppercase shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:bg-slate-900 transition-all">Confirm & Sync to Google</button>
-                    <button onClick={() => setStep(1)} className="w-full py-3 text-slate-400 font-black text-[10px] uppercase tracking-widest hover:underline">← Back to Candidate List</button>
+                    <button 
+                      onClick={handleSave} 
+                      disabled={isSyncing}
+                      className={`w-full py-5 bg-blue-600 text-white rounded-2xl border-4 border-slate-900 font-black text-sm uppercase shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all ${isSyncing ? 'opacity-50 animate-pulse' : 'hover:bg-slate-900'}`}
+                    >
+                      {isSyncing ? 'Syncing...' : 'Confirm & Sync'}
+                    </button>
+                    <button onClick={() => setStep(1)} className="w-full py-3 text-slate-400 font-black text-[10px] uppercase tracking-widest hover:underline">← Back to List</button>
                   </div>
                 </div>
               )}
