@@ -31,9 +31,9 @@ export default function EmailHub() {
   useEffect(() => { fetchData(); }, []);
 
   const fetchData = async () => {
-    // FIX: Include 'Offer Accepted' so candidates stay visible
+    // UPDATED: Added 'offered_salary' to the select query
     const { data: apps } = await supabase.from('applicants')
-      .select('id, name, email, job_role, current_salary, expected_salary')
+      .select('id, name, email, job_role, current_salary, expected_salary, offered_salary')
       .in('status', ['Offered', 'Offer Accepted'])
       .order('name');
     
@@ -49,11 +49,13 @@ export default function EmailHub() {
     setSelectedId(id);
     const app = applicants.find(a => a.id === id);
     if (app) {
-      // Auto-populate salary from their expectation
-      setDetails(prev => ({...prev, salary: app.expected_salary || '3000'}));
+      // LOGIC: Priority 1: Offered Salary (from Dashboard), Priority 2: Expected, Priority 3: Default 3000
+      const initialSalary = app.offered_salary || app.expected_salary || '3000';
+      setDetails(prev => ({...prev, salary: initialSalary}));
     }
   };
 
+  // ... (Keep existing selectedApp, currentSchedule, trainingCost logic)
   const selectedApp = applicants.find(a => a.id === selectedId);
   const currentSchedule = schedules[details.scheduleKey];
   const trainingCostAmount = isSingaporean ? "$2,000" : "$1,000";
@@ -69,11 +71,12 @@ export default function EmailHub() {
       await navigator.clipboard.write(data);
       setCopyStatus(true);
 
+      // Record in history with whatever salary is currently in the editable input
       await supabase.from('offer_history').insert([{
         applicant_id: selectedApp.id,
         applicant_name: selectedApp.name,
         role: selectedApp.job_role,
-        salary: details.salary
+        salary: details.salary 
       }]);
 
       const subject = `Congratulations_Offered (${selectedApp?.job_role}) _ ${selectedApp?.name}`;
@@ -93,8 +96,8 @@ export default function EmailHub() {
   };
 
   return (
-    <div className="max-w-[1600px] mx-auto px-8 py-10 pb-40">
-      {/* HEADER */}
+    <div className="max-w-[1600px] mx-auto px-8 py-10 pb-40 text-slate-900">
+      {/* HEADER SECTION - Same as original */}
       <div className="flex justify-between items-end mb-12 border-b-[10px] border-slate-900 pb-10">
         <h1 className="text-7xl font-black uppercase italic tracking-tighter text-slate-900 leading-none">Offer Hub</h1>
         <div className="flex gap-4">
@@ -119,13 +122,23 @@ export default function EmailHub() {
                   <option value="">Choose Candidate...</option>
                   {applicants.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
-                {selectedApp && <p className="text-[9px] font-bold text-blue-600 ml-4 uppercase">Expected: ${selectedApp.expected_salary}</p>}
+                {selectedApp && (
+                  <div className="flex gap-4 ml-4 mt-2">
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Expected: ${selectedApp.expected_salary}</p>
+                    <p className="text-[9px] font-bold text-emerald-600 uppercase tracking-widest italic underline">Confirmed: ${selectedApp.offered_salary || 'NONE'}</p>
+                  </div>
+                )}
               </div>
 
+              {/* SALARY INPUT - Still fully editable */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className={labelClass}>Monthly Salary</label>
-                  <input className={inputClass} value={details.salary} onChange={e => setDetails({...details, salary: e.target.value})} />
+                  <label className={labelClass}>Monthly Salary ($)</label>
+                  <input 
+                    className={`${inputClass} bg-blue-50 focus:bg-white text-blue-700`} 
+                    value={details.salary} 
+                    onChange={e => setDetails({...details, salary: e.target.value})} 
+                  />
                 </div>
                 <div className="space-y-1">
                   <label className={labelClass}>Join Date</label>
@@ -133,6 +146,7 @@ export default function EmailHub() {
                 </div>
               </div>
 
+              {/* (Keep remaining inputs: Schedule, Notice, Expiry, Probation) */}
               <div className="space-y-1">
                 <label className={labelClass}>Working Hours Schedule</label>
                 <select className={selectClass} value={details.scheduleKey} onChange={e => setDetails({...details, scheduleKey: e.target.value})}>
@@ -162,6 +176,7 @@ export default function EmailHub() {
             </button>
           </div>
 
+          {/* (Keep History Section) */}
           <div className="bg-slate-900 rounded-[3rem] p-10 text-white min-h-[300px]">
              <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-400 mb-6">Dispatch History</h3>
              <div className="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
@@ -178,7 +193,7 @@ export default function EmailHub() {
           </div>
         </div>
 
-        {/* PREVIEW */}
+        {/* PREVIEW CONTAINER - Same as original */}
         <div className="lg:col-span-8 bg-white p-20 rounded-[5rem] shadow-2xl border border-slate-100 min-h-[1000px]">
           <div id="email-content" style={{ color: '#000', fontFamily: 'Arial, sans-serif', fontSize: '15px', lineHeight: '1.4' }}>
               <p>Dear {selectedApp?.name || 'Candidate'},</p>
@@ -191,6 +206,7 @@ export default function EmailHub() {
               <table style={{ borderCollapse: 'collapse', width: '100%', border: '1px solid #000', marginTop: '10px' }}>
                 <tbody>
                   <tr><td style={{ border: '1px solid #000', padding: '12px', backgroundColor: '#D9E2F3', fontWeight: 'bold', width: '35%' }}>Monthly Salary</td><td style={{ border: '1px solid #000', padding: '12px' }}>${details.salary}</td></tr>
+                  {/* ... (Keep existing table rows) */}
                   <tr>
                     <td style={{ border: '1px solid #000', padding: '12px', backgroundColor: '#D9E2F3', fontWeight: 'bold' }}>Work Days</td>
                     <td style={{ border: '1px solid #000', padding: '12px' }}>
@@ -206,6 +222,7 @@ export default function EmailHub() {
                 </tbody>
               </table>
               <br />
+              {/* (Keep footer sections) */}
               {isFullTimeStaff && (
                 <div style={{ color: 'red', fontWeight: 'bold', fontStyle: 'italic' }}>
                   &lt;ONLY APPLIES TO SINGAPORE FULL TIME STAFF&gt;
