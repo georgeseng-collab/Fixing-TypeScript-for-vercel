@@ -4,11 +4,11 @@ import { supabase } from '../db';
 
 export default function ApprovalHub() {
   const [applicants, setApplicants] = useState([]);
+  const [history, setHistory] = useState([]);
   const [selectedId, setSelectedId] = useState('');
   const [isSingaporean, setIsSingaporean] = useState(true); 
   const [copyStatus, setCopyStatus] = useState(false);
   
-  // Recipient Routing
   const [boss, setBoss] = useState('Alicia');
   const recipients = {
     'Alicia': { email: 'alicia@geniebook.com', name: 'Alicia' },
@@ -36,23 +36,36 @@ export default function ApprovalHub() {
   };
 
   useEffect(() => {
-    fetchApplicants();
+    fetchData();
   }, []);
 
-  const fetchApplicants = async () => {
-    const { data } = await supabase.from('applicants')
+  const fetchData = async () => {
+    // Fetch Applicants
+    const { data: apps } = await supabase.from('applicants')
       .select('*')
       .in('status', ['Offered', 'Offer Accepted'])
       .order('name');
-    setApplicants(data || []);
+    setApplicants(apps || []);
+
+    // Fetch History (Combined Hiring/Salary for this hub)
+    const { data: hist } = await supabase.from('salary_approval_history')
+      .select('*')
+      .order('sent_at', { ascending: false });
+    setHistory(hist || []);
+  };
+
+  const deleteHistory = async (id) => {
+    if (window.confirm("Delete this dispatch record from history?")) {
+      await supabase.from('salary_approval_history').delete().eq('id', id);
+      await supabase.from('hiring_approval_history').delete().eq('applicant_id', history.find(h => h.id === id).applicant_id);
+      fetchData();
+    }
   };
 
   const selectedApp = applicants.find(a => a.id === selectedId);
   const currentSchedule = schedules[details.scheduleKey] || schedules["Sales (Fixed)"];
 
-  // --- CALCULATION LOGIC ---
   const n = (val) => Number(val) || 0;
-  
   const currentSal = n(selectedApp?.current_salary);
   const expectedSal = n(selectedApp?.expected_salary);
   const proposedSal = n(details.proposedSal);
@@ -60,15 +73,15 @@ export default function ApprovalHub() {
   const months = n(details.monthsPaid);
 
   const calcAnnual = (sal, allow, m) => (sal + allow) * m;
-  const calcInc = (curr, prop) => {
-    if (curr === 0) return "0%";
-    const diff = ((prop - curr) / curr) * 100;
-    return diff >= 0 ? `${diff.toFixed(1)}%` : `Saving ${Math.abs(diff).toFixed(1)}%`;
-  };
-
   const currAnnual = calcAnnual(currentSal, 0, 12);
   const expAnnual = calcAnnual(expectedSal, 0, 12);
   const propAnnual = calcAnnual(proposedSal, proposedAllow, months);
+
+  const calcInc = (curr, prop) => {
+    if (curr === 0) return "0%";
+    const diff = ((prop - curr) / curr) * 100;
+    return diff >= 0 ? `${diff.toFixed(1)}%` : `-${Math.abs(diff).toFixed(1)}% (S)`;
+  };
 
   const handleDispatch = async () => {
     if (!selectedId) return alert("Select candidate first.");
@@ -80,76 +93,124 @@ export default function ApprovalHub() {
       await navigator.clipboard.write(data);
       setCopyStatus(true);
       
-      // Update Histories
       await supabase.from('hiring_approval_history').insert([{ applicant_id: selectedApp.id, applicant_name: selectedApp.name }]);
-      await supabase.from('salary_approval_history').insert([{ applicant_id: selectedApp.id, applicant_name: selectedApp.name }]);
+      await supabase.from('salary_approval_history').insert([{ applicant_id: selectedApp.id, applicant_name: selectedApp.name, salary: details.proposedSal }]);
 
-      const toEmail = recipients[boss].email;
       const subject = `Hiring & Salary Approval Request - ${selectedApp.name}`;
-      const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${toEmail}&cc=${ccEmail}&su=${encodeURIComponent(subject)}`;
+      const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${recipients[boss].email}&cc=${ccEmail}&su=${encodeURIComponent(subject)}`;
       
       window.open(gmailUrl, '_blank');
+      fetchData(); // Refresh history
       setTimeout(() => setCopyStatus(false), 2000);
     } catch (err) { alert("Copy failed."); }
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-10 pb-40">
+    <div className="max-w-[1600px] mx-auto px-8 py-10 pb-40">
       {/* HEADER SECTION */}
-      <div className="flex justify-between items-center mb-10 border-b-8 border-slate-900 pb-8">
+      <div className="flex justify-between items-end mb-12 border-b-[10px] border-slate-900 pb-10">
         <div>
-          <h1 className="text-5xl font-black uppercase italic tracking-tighter text-slate-900">Approval Hub</h1>
-          <div className="flex gap-2 mt-4">
-            <button onClick={() => setBoss('Alicia')} className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${boss === 'Alicia' ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-200 text-slate-500'}`}>Hi Alicia (Boss)</button>
-            <button onClick={() => setBoss('ZhiZhong')} className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${boss === 'ZhiZhong' ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-200 text-slate-500'}`}>Hi ZhiZhong (Boss)</button>
+          <h1 className="text-7xl font-black uppercase italic tracking-tighter text-slate-900 leading-none">Approval Hub</h1>
+          <div className="flex gap-3 mt-6">
+            {Object.keys(recipients).map(r => (
+              <button key={r} onClick={() => setBoss(r)} className={`px-8 py-3 rounded-2xl text-xs font-black uppercase transition-all shadow-sm ${boss === r ? 'bg-blue-600 text-white translate-y-[-4px]' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}>
+                Hi {r}
+              </button>
+            ))}
           </div>
         </div>
 
-        <div className="bg-slate-200 p-1.5 rounded-2xl flex gap-1 shadow-inner border border-slate-300">
-          <button onClick={() => setIsSingaporean(true)} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${isSingaporean ? 'bg-white shadow text-emerald-600' : 'text-slate-500'}`}>Singaporean</button>
-          <button onClick={() => setIsSingaporean(false)} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all ${!isSingaporean ? 'bg-white shadow text-emerald-600' : 'text-slate-500'}`}>Malaysian</button>
+        <div className="flex flex-col items-end gap-4">
+          <div className="bg-slate-900 p-2 rounded-3xl flex gap-1 shadow-2xl">
+            <button onClick={() => setIsSingaporean(true)} className={`px-10 py-4 rounded-2xl text-xs font-black uppercase transition-all ${isSingaporean ? 'bg-white text-blue-600 shadow-xl' : 'text-slate-500'}`}>Singaporean</button>
+            <button onClick={() => setIsSingaporean(false)} className={`px-10 py-4 rounded-2xl text-xs font-black uppercase transition-all ${!isSingaporean ? 'bg-white text-emerald-600 shadow-xl' : 'text-slate-500'}`}>Malaysian</button>
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-        {/* INPUT SIDEBAR */}
-        <div className="lg:col-span-4 space-y-4 sticky top-24 h-fit bg-white p-8 rounded-[3.5rem] shadow-2xl border-4 border-slate-900">
-            <label className={labelClass}>Candidate</label>
-            <select className="w-full p-4 bg-slate-50 rounded-2xl font-bold text-sm mb-4" value={selectedId} onChange={e => setSelectedId(e.target.value)}>
-              <option value="">Select Candidate...</option>
-              {applicants.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-            </select>
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
+        {/* SIDEBAR */}
+        <div className="lg:col-span-4 space-y-6">
+          <div className="bg-white p-10 rounded-[4rem] shadow-2xl border-4 border-slate-900 space-y-6 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-full -mr-16 -mt-16 -z-10"></div>
+            
+            <div className="space-y-4">
+              <label className={labelClass}>Target Candidate</label>
+              <select className={selectClass} value={selectedId} onChange={e => setSelectedId(e.target.value)}>
+                <option value="">Choose Candidate...</option>
+                {applicants.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
 
-            <div className="grid grid-cols-2 gap-4">
-               <input className="p-4 bg-slate-50 rounded-xl font-bold text-xs" placeholder="Proposed Salary" type="number" value={details.proposedSal} onChange={e => setDetails({...details, proposedSal: e.target.value})} />
-               <input className="p-4 bg-slate-50 rounded-xl font-bold text-xs" placeholder="Fixed Allowance" type="number" value={details.proposedAllowance} onChange={e => setDetails({...details, proposedAllowance: e.target.value})} />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className={labelClass}>Proposed Sal</label>
+                  <input className={inputClass} type="number" value={details.proposedSal} onChange={e => setDetails({...details, proposedSal: e.target.value})} />
+                </div>
+                <div className="space-y-1">
+                  <label className={labelClass}>Allowance</label>
+                  <input className={inputClass} type="number" value={details.proposedAllowance} onChange={e => setDetails({...details, proposedAllowance: e.target.value})} />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className={labelClass}>Schedule & Reporting</label>
+                <select className={selectClass} value={details.scheduleKey} onChange={e => setDetails({...details, scheduleKey: e.target.value})}>
+                  {Object.keys(schedules).map(k => <option key={k} value={k}>{k}</option>)}
+                </select>
+                <input className={`${inputClass} mt-2`} placeholder="Manager Name" value={details.manager} onChange={e => setDetails({...details, manager: e.target.value})} />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className={labelClass}>Join Date</label>
+                  <input className={inputClass} value={details.joinDate} onChange={e => setDetails({...details, joinDate: e.target.value})} />
+                </div>
+                <div className="space-y-1">
+                  <label className={labelClass}>Probation</label>
+                  <input className={inputClass} value={details.probation} onChange={e => setDetails({...details, probation: e.target.value})} />
+                </div>
+              </div>
             </div>
 
-            <select className="w-full p-4 bg-slate-50 rounded-xl font-bold text-xs" value={details.scheduleKey} onChange={e => setDetails({...details, scheduleKey: e.target.value})}>
-              {Object.keys(schedules).map(k => <option key={k} value={k}>{k}</option>)}
-            </select>
-
-            <input className="w-full p-4 bg-slate-50 rounded-xl font-bold text-xs" placeholder="Reporting Manager" value={details.manager} onChange={e => setDetails({...details, manager: e.target.value})} />
-
-            <div className="grid grid-cols-2 gap-4">
-               <input className="p-4 bg-slate-50 rounded-xl font-bold text-xs" placeholder="Join Date" value={details.joinDate} onChange={e => setDetails({...details, joinDate: e.target.value})} />
-               <input className="p-4 bg-slate-50 rounded-xl font-bold text-xs" placeholder="Probation" value={details.probation} onChange={e => setDetails({...details, probation: e.target.value})} />
-            </div>
-
-            <button onClick={handleDispatch} className="w-full py-7 bg-blue-600 text-white rounded-[2rem] font-black uppercase tracking-[0.2em] shadow-xl hover:bg-slate-900 transition-all active:scale-95">
-              {copyStatus ? '✅ COPIED TO CLIPBOARD' : '🚀 DISPATCH APPROVAL'}
+            <button onClick={handleDispatch} className={`w-full py-8 text-white rounded-[2.5rem] font-black uppercase text-sm tracking-[0.3em] shadow-2xl transition-all active:scale-95 ${copyStatus ? 'bg-emerald-500' : 'bg-blue-600 hover:bg-slate-900'}`}>
+              {copyStatus ? '✅ COPIED & OPENED' : '🚀 DISPATCH APPROVAL'}
             </button>
+          </div>
+
+          {/* HISTORY LOG */}
+          <div className="bg-slate-900 rounded-[3rem] p-10 text-white min-h-[300px]">
+             <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-400 mb-6 flex items-center gap-2">
+               <span className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></span>
+               Approval History
+             </h3>
+             <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+               {history.length === 0 && <p className="text-slate-500 text-xs font-bold italic">No dispatches found...</p>}
+               {history.map(h => (
+                 <div key={h.id} className="group bg-slate-800/50 p-5 rounded-2xl flex justify-between items-center border border-transparent hover:border-slate-700 transition-all">
+                   <div>
+                     <p className="font-black text-[11px] uppercase tracking-tight">{h.applicant_name}</p>
+                     <p className="text-[9px] font-bold text-slate-500 uppercase mt-1">
+                       ${h.salary || 'N/A'} • {new Date(h.sent_at).toLocaleDateString()}
+                     </p>
+                   </div>
+                   <button onClick={() => deleteHistory(h.id)} className="opacity-0 group-hover:opacity-100 p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition-all">✕</button>
+                 </div>
+               ))}
+             </div>
+          </div>
         </div>
 
-        {/* EMAIL PREVIEW (EXACT SCREENSHOT FORMAT) */}
-        <div className="lg:col-span-8 bg-white p-16 rounded-[4.5rem] shadow-2xl border border-slate-100 min-h-[1000px]">
-          <div id="approval-content" style={{ color: '#000', fontFamily: 'Arial, sans-serif', fontSize: '15px', lineHeight: '1.2' }}>
+        {/* PREVIEW */}
+        <div className="lg:col-span-8 bg-white p-20 rounded-[5rem] shadow-2xl border border-slate-100 relative">
+          <div className="absolute top-10 right-10 opacity-10 font-black text-8xl pointer-events-none uppercase italic -rotate-12">GENIEBOOK</div>
+          
+          <div id="approval-content" className="relative z-10" style={{ color: '#000', fontFamily: 'Arial, sans-serif', fontSize: '15px', lineHeight: '1.2' }}>
             <p>Hi {recipients[boss].name},</p>
             <br />
             <p>Please do approve to hire the following candidate as well as reviewing the salary package offered to the <strong>{isSingaporean ? 'Singaporean' : 'Malaysian'}</strong> candidate below.</p>
             <br />
-            <p style={{ margin: '0' }}>Name: {selectedApp?.name || 'Candidate Name'}</p>
-            <p style={{ margin: '0' }}>Role: {selectedApp?.job_role || 'Position'}</p>
+            <p style={{ margin: '0' }}>Name: {selectedApp?.name || '---'}</p>
+            <p style={{ margin: '0' }}>Role: {selectedApp?.job_role || '---'}</p>
             <p style={{ margin: '0' }}>Source: {details.source}</p>
             <br />
             <p style={{ margin: '0' }}><strong>Working Hours</strong></p>
@@ -168,9 +229,8 @@ export default function ApprovalHub() {
             <br />
             <table style={{ borderCollapse: 'collapse', width: '100%', border: '1px solid #000' }}>
               <tbody>
-                <tr><td style={{ border: '1px solid #000', padding: '10px', backgroundColor: '#D9E2F3', fontWeight: 'bold', width: '30%' }}>Job Department</td><td colSpan="4" style={{ border: '1px solid #000', padding: '10px' }}>{details.department}</td></tr>
+                <tr><td style={{ border: '1px solid #000', padding: '10px', backgroundColor: '#D9E2F3', fontWeight: 'bold', width: '35%' }}>Job Department</td><td colSpan="4" style={{ border: '1px solid #000', padding: '10px' }}>{details.department}</td></tr>
                 <tr><td style={{ border: '1px solid #000', padding: '10px', backgroundColor: '#D9E2F3', fontWeight: 'bold' }}>Job Title</td><td colSpan="4" style={{ border: '1px solid #000', padding: '10px' }}>{selectedApp?.job_role}</td></tr>
-                <tr><td style={{ border: '1px solid #000', padding: '10px', backgroundColor: '#D9E2F3', fontWeight: 'bold' }}>Job Level</td><td colSpan="4" style={{ border: '1px solid #000', padding: '10px' }}></td></tr>
                 <tr><td style={{ border: '1px solid #000', padding: '10px', backgroundColor: '#D9E2F3', fontWeight: 'bold' }}>Reporting To</td><td colSpan="4" style={{ border: '1px solid #000', padding: '10px' }}>{details.manager}</td></tr>
                 
                 <tr style={{ backgroundColor: '#D9E2F3', fontWeight: 'bold', textAlign: 'center' }}>
@@ -188,7 +248,6 @@ export default function ApprovalHub() {
                   <td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>${proposedSal.toLocaleString()}</td>
                   <td style={{ border: '1px solid #000', padding: '10px', textAlign: 'center' }}>{calcInc(currentSal, proposedSal)}</td>
                 </tr>
-
                 <tr>
                   <td style={{ border: '1px solid #000', padding: '10px' }}>Monthly Fixed Allowance</td>
                   <td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>$0</td>
@@ -196,7 +255,6 @@ export default function ApprovalHub() {
                   <td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>${proposedAllow.toLocaleString()}</td>
                   <td style={{ border: '1px solid #000', padding: '10px' }}></td>
                 </tr>
-
                 <tr>
                   <td style={{ border: '1px solid #000', padding: '10px' }}>Months Paid</td>
                   <td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>12</td>
@@ -204,7 +262,6 @@ export default function ApprovalHub() {
                   <td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>{months}</td>
                   <td style={{ border: '1px solid #000', padding: '10px' }}></td>
                 </tr>
-
                 <tr style={{ backgroundColor: '#D9E2F3', fontWeight: 'bold' }}>
                   <td style={{ border: '1px solid #000', padding: '10px', textAlign: 'center' }}>Annual Guaranteed Cash</td>
                   <td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>${currAnnual.toLocaleString()}</td>
@@ -212,7 +269,6 @@ export default function ApprovalHub() {
                   <td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>${propAnnual.toLocaleString()}</td>
                   <td style={{ border: '1px solid #000', padding: '10px', textAlign: 'center' }}>{calcInc(currAnnual, propAnnual)}</td>
                 </tr>
-
                 <tr style={{ backgroundColor: '#E2EFDA', fontWeight: 'bold' }}>
                   <td style={{ border: '1px solid #000', padding: '10px' }}>Total Compensation Package</td>
                   <td style={{ border: '1px solid #000', padding: '10px', textAlign: 'right' }}>${currAnnual.toLocaleString()}</td>
@@ -229,4 +285,6 @@ export default function ApprovalHub() {
   );
 }
 
-const labelClass = "text-[10px] font-black uppercase text-slate-400 ml-4 mb-1 block tracking-widest";
+const inputClass = "w-full p-4 bg-slate-50 rounded-2xl font-bold text-xs border-2 border-transparent focus:border-blue-600 focus:bg-white outline-none transition-all shadow-inner";
+const selectClass = "w-full p-4 bg-slate-50 rounded-2xl font-bold text-xs border-2 border-transparent focus:border-blue-600 outline-none transition-all cursor-pointer";
+const labelClass = "text-[10px] font-black uppercase text-slate-400 ml-4 mb-1 block tracking-[0.2em]";
