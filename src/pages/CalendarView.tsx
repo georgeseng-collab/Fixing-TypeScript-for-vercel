@@ -9,7 +9,8 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 const locales = { 'en-US': enUS };
 const localizer = dateFnsLocalizer({ format, parse, startOfWeek, getDay, locales });
 
-const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzPtaJGgrcP6YQqNkbZz0J25iS7_FuXjPCzEtBex5jq-WrPKf9C867z3zhhH99NUheR/exec';
+// --- UPDATED GOOGLE SCRIPT URL ---
+const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwtMXnRrDEx80dni3lrYtSMbQBbPBgK218XgDd9Frd7Vx2q1lHOZ8csVyiAhmKE9E0i/exec';
 
 export default function CalendarView() {
   const [events, setEvents] = useState([]);
@@ -24,7 +25,7 @@ export default function CalendarView() {
   const [selectedEventId, setSelectedEventId] = useState(null);
   
   const [searchCandidate, setSearchCandidate] = useState('');
-  const [guestEmails, setGuestEmails] = useState(''); // NEW: Guest list state
+  const [guestEmails, setGuestEmails] = useState(''); // Guest list state
   const [resumeFile, setResumeFile] = useState(null);
   const [formDate, setFormDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [formTime, setFormTime] = useState('10:00');
@@ -84,7 +85,7 @@ export default function CalendarView() {
         } catch (e) { console.warn("Resume retrieval failed:", e); }
       }
 
-      // Sync to Google including Guests
+      // Sync to Google including Guest List
       await fetch(GOOGLE_SCRIPT_URL, {
         method: 'POST',
         mode: 'no-cors', 
@@ -97,7 +98,7 @@ export default function CalendarView() {
           fileName: fileName,
           contentType: contentType,
           fileBase64: base64File,
-          guests: guestEmails // NEW: Sending guest list string
+          guests: guestEmails // Sending the emails from the input field
         })
       });
 
@@ -123,9 +124,9 @@ export default function CalendarView() {
         status_history: updatedHistory 
       }).eq('id', selectedApp.id);
 
-      alert("Success! Google Calendar updated and Invites Sent.");
+      alert("Success! Sync triggered and invites sent.");
       setShowModal(false);
-      setGuestEmails(''); // Clear guests
+      setGuestEmails('');
       setResumeFile(null);
       fetchData();
     } catch (err) {
@@ -152,19 +153,19 @@ export default function CalendarView() {
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-10 relative pb-32">
+      
+      {/* Header */}
       <div className="bg-white p-12 rounded-[4rem] border-4 border-slate-900 shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] flex justify-between items-center mb-12">
-        <div>
-          <h1 className="text-6xl font-black text-slate-900 italic tracking-tighter uppercase leading-none">Scheduler</h1>
-          <p className="text-[10px] font-black uppercase text-slate-400 tracking-[0.3em] mt-2">Manual Interview Bookings Only</p>
-        </div>
+        <h1 className="text-6xl font-black text-slate-900 italic tracking-tighter uppercase leading-none">Scheduler</h1>
         <button 
           onClick={() => { setIsManagementMode(false); setStep(1); setShowModal(true); }} 
-          className="bg-blue-600 text-white px-12 py-6 rounded-[2.5rem] border-4 border-slate-900 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] font-black text-xs uppercase tracking-widest hover:translate-y-[-4px] active:translate-y-[2px] active:shadow-none transition-all"
+          className="bg-blue-600 text-white px-12 py-6 rounded-[2.5rem] border-4 border-slate-900 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] font-black text-xs uppercase tracking-widest hover:bg-slate-900 transition-all active:translate-y-1"
         >
           + New Schedule
         </button>
       </div>
 
+      {/* Calendar Area */}
       <div className="bg-white p-10 rounded-[4.5rem] border-4 border-slate-900 shadow-[20px_20px_0px_0px_rgba(15,23,42,1)]" style={{ height: '800px' }}>
         <Calendar 
           localizer={localizer} 
@@ -191,27 +192,26 @@ export default function CalendarView() {
               borderRadius: '20px', 
               border: '3px solid #0f172a', 
               fontWeight: '900',
-              textTransform: 'uppercase',
-              fontSize: '10px',
-              padding: '4px 10px'
+              fontSize: '10px'
             } 
           })}
         />
       </div>
 
+      {/* Modal Interface */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-[100] flex items-center justify-center p-6">
-          <div className="bg-white w-full max-w-lg rounded-[4rem] border-8 border-slate-900 shadow-[25px_25px_0px_0px_rgba(0,0,0,1)] overflow-hidden relative animate-in zoom-in duration-200">
+          <div className="bg-white w-full max-w-lg rounded-[4rem] border-8 border-slate-900 shadow-[25px_25px_0px_0px_rgba(0,0,0,1)] overflow-hidden relative">
             
             {isSyncing && (
               <div className="absolute inset-0 bg-white/95 z-50 flex flex-col items-center justify-center space-y-4">
                 <div className="w-16 h-16 border-8 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                <p className="font-black text-slate-900 text-xs uppercase tracking-widest italic">Syncing to Google...</p>
+                <p className="font-black text-slate-900 text-xs uppercase tracking-widest italic text-center">Inviting Guests &<br/>Syncing to Calendar...</p>
               </div>
             )}
 
             <div className={`p-12 text-white flex justify-between items-center ${isManagementMode ? 'bg-blue-600' : 'bg-slate-900'}`}>
-              <h3 className="text-4xl font-black italic uppercase tracking-tighter">{isManagementMode ? 'Manage' : 'Step ' + step}</h3>
+              <h3 className="text-4xl font-black italic uppercase tracking-tighter">{isManagementMode ? 'Edit' : 'Step ' + step}</h3>
               <button onClick={() => setShowModal(false)} className="text-3xl font-black opacity-30 hover:opacity-100 transition-opacity">✕</button>
             </div>
 
@@ -221,7 +221,7 @@ export default function CalendarView() {
                   <input 
                     type="text" 
                     placeholder="Search candidate..." 
-                    className="w-full p-6 bg-slate-50 border-4 border-slate-900 rounded-[2rem] font-black outline-none shadow-inner uppercase text-sm" 
+                    className="w-full p-6 bg-slate-50 border-4 border-slate-900 rounded-[2rem] font-black outline-none uppercase text-sm" 
                     value={searchCandidate} 
                     onChange={e => setSearchCandidate(e.target.value)} 
                   />
@@ -232,7 +232,7 @@ export default function CalendarView() {
                         <button 
                           key={app.id} 
                           onClick={() => { setSelectedApp(app); setStep(2); }} 
-                          className="w-full text-left p-6 bg-white hover:bg-blue-50 rounded-[2.5rem] border-4 border-slate-900 flex justify-between items-center group transition-all shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] hover:translate-x-1 hover:translate-y-[-2px]"
+                          className="w-full text-left p-6 bg-white hover:bg-blue-50 rounded-[2.5rem] border-4 border-slate-900 flex justify-between items-center group transition-all"
                         >
                           <div>
                             <div className="font-black text-slate-900 text-xl uppercase tracking-tighter italic">{app.name}</div>
@@ -245,25 +245,21 @@ export default function CalendarView() {
                 </div>
               ) : (
                 <div className="space-y-8">
-                  <div className="bg-slate-900 p-8 rounded-[3rem] text-white border-4 border-slate-900">
-                    <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Target Candidate</p>
+                  <div className="bg-slate-900 p-8 rounded-[3rem] text-white">
+                    <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1 italic">Candidate</p>
                     <div className="text-3xl font-black italic uppercase tracking-tighter leading-none">{selectedApp?.name}</div>
                   </div>
                   
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-black uppercase text-slate-400 ml-4 tracking-widest">Date & Time</label>
-                    <div className="grid grid-cols-2 gap-4">
-                      <input type="date" className="p-5 bg-slate-50 border-4 border-slate-900 rounded-[2rem] font-black outline-none uppercase text-xs" value={formDate} onChange={e => setFormDate(e.target.value)} />
-                      <input type="time" className="p-5 bg-slate-50 border-4 border-slate-900 rounded-[2rem] font-black outline-none uppercase text-xs" value={formTime} onChange={e => setFormTime(e.target.value)} />
-                    </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <input type="date" className="p-5 bg-slate-50 border-4 border-slate-900 rounded-[2rem] font-black outline-none text-xs" value={formDate} onChange={e => setFormDate(e.target.value)} />
+                    <input type="time" className="p-5 bg-slate-50 border-4 border-slate-900 rounded-[2rem] font-black outline-none text-xs" value={formTime} onChange={e => setFormTime(e.target.value)} />
                   </div>
 
-                  {/* NEW GUEST INVITE FIELD */}
                   <div className="space-y-3">
-                    <label className="text-[10px] font-black uppercase text-slate-400 ml-4 tracking-widest italic">Invite Interviewers (Emails)</label>
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-4 tracking-widest italic">Invite Interviewers (Comma separated)</label>
                     <input 
                       type="text" 
-                      placeholder="interviewer1@geniebook.com, boss@geniebook.com"
+                      placeholder="boss@geniebook.com, lead@geniebook.com"
                       className="w-full p-5 bg-slate-50 border-4 border-slate-900 rounded-[2rem] font-bold outline-none text-xs" 
                       value={guestEmails}
                       onChange={e => setGuestEmails(e.target.value)}
@@ -271,20 +267,16 @@ export default function CalendarView() {
                   </div>
 
                   <div className="space-y-3">
-                    <label className="text-[10px] font-black uppercase text-slate-400 ml-4 tracking-widest">Attachment</label>
-                    <input 
-                      type="file" 
-                      className="w-full p-4 bg-slate-50 border-4 border-slate-900 rounded-[2rem] text-[10px] font-black uppercase" 
-                      onChange={(e) => setResumeFile(e.target.files?.[0] || null)} 
-                    />
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-4 tracking-widest">Update Attachment</label>
+                    <input type="file" className="w-full p-4 bg-slate-50 border-4 border-slate-900 rounded-[2rem] text-[10px] font-black uppercase" onChange={(e) => setResumeFile(e.target.files?.[0] || null)} />
                   </div>
 
                   <div className="flex flex-col gap-4 pt-4">
                     <button 
                       onClick={handleSave} 
-                      className="w-full py-6 bg-blue-600 text-white rounded-[2.5rem] border-4 border-slate-900 font-black text-sm uppercase tracking-widest shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-4px] active:translate-y-[2px] transition-all"
+                      className="w-full py-6 bg-blue-600 text-white rounded-[2.5rem] border-4 border-slate-900 font-black text-sm uppercase tracking-widest shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:bg-slate-900 transition-all active:translate-y-1"
                     >
-                        Confirm & Sync
+                        Confirm & Send Invites
                     </button>
                     {isManagementMode ? (
                         <button onClick={confirmDelete} className="w-full py-4 text-rose-600 font-black text-[10px] uppercase tracking-widest hover:bg-rose-50 rounded-2xl transition-all">Delete Schedule</button>
