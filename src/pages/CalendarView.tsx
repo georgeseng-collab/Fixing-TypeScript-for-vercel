@@ -9,7 +9,6 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 const locales = { 'en-US': enUS };
 const localizer = dateFnsLocalizer({ format, parse, startOfWeek, getDay, locales });
 
-// --- YOUR GOOGLE SCRIPT URL ---
 const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzPtaJGgrcP6YQqNkbZz0J25iS7_FuXjPCzEtBex5jq-WrPKf9C867z3zhhH99NUheR/exec';
 
 export default function CalendarView() {
@@ -35,15 +34,16 @@ export default function CalendarView() {
       if (error) throw error;
       setApplicants(data || []);
       
+      // FIX: Only show events that have the 'isManual' flag set to true
       const calendarEvents = (data || []).flatMap(app => 
         (app.status_history || [])
-          .filter(h => h && (h.status === 'Interviewing' || h.status === 'Hired'))
+          .filter(h => h && h.isManual === true) // <--- Only show manual bookings
           .map((h, idx) => ({
             id: `${app.id}___${idx}`,
             candidate: app,
             start: new Date(h.date),
             end: addHours(new Date(h.date), 1),
-            title: `Interview: ${app.job_role || 'Role'} - ${app.name}`
+            title: `INTERVIEW: ${app.name} (${app.job_role || 'Role'})`
           }))
       );
       setEvents(calendarEvents);
@@ -62,9 +62,7 @@ export default function CalendarView() {
       let fileName = "resume.pdf";
       let contentType = "application/pdf";
 
-      // --- SMART FILE RETRIEVAL ---
       if (resumeFile) {
-        // Option A: User uploaded a new file in the modal
         fileName = resumeFile.name;
         contentType = resumeFile.type;
         const reader = new FileReader();
@@ -73,50 +71,52 @@ export default function CalendarView() {
           reader.readAsDataURL(resumeFile);
         });
       } else if (selectedApp.resume_metadata?.url) {
-        // Option B: No new file, so pull existing one from Supabase Storage
         try {
           const response = await fetch(selectedApp.resume_metadata.url);
           const blob = await response.blob();
           fileName = `${selectedApp.name.replace(/\s/g, '_')}_Resume.pdf`;
           contentType = blob.type;
-          
           base64File = await new Promise((resolve) => {
             const reader = new FileReader();
             reader.onloadend = () => resolve(reader.result.split(',')[1]);
             reader.readAsDataURL(blob);
           });
-        } catch (e) {
-          console.warn("Could not auto-retrieve resume from Supabase URL:", e);
-        }
+        } catch (e) { console.warn("Resume retrieval failed:", e); }
       }
 
-      // --- SEND TO GOOGLE SCRIPT ---
-      const payload = JSON.stringify({
-        name: selectedApp.name,
-        role: selectedApp.job_role || "Candidate",
-        date: formDate,
-        time: formTime,
-        fileName: fileName,
-        contentType: contentType,
-        fileBase64: base64File
-      });
-
+      // Sync to Google
       await fetch(GOOGLE_SCRIPT_URL, {
         method: 'POST',
         mode: 'no-cors', 
         headers: { 'Content-Type': 'text/plain' },
-        body: payload
+        body: JSON.stringify({
+          name: selectedApp.name,
+          role: selectedApp.job_role || "Candidate",
+          date: formDate,
+          time: formTime,
+          fileName: fileName,
+          contentType: contentType,
+          fileBase64: base64File
+        })
       });
 
-      // --- UPDATE SUPABASE DATABASE ---
+      // Update Database
       const finalTimestamp = `${formDate}T${formTime}:00+08:00`;
       let updatedHistory = [...(selectedApp.status_history || [])];
 
       if (isManagementMode) {
         const idx = parseInt(selectedEventId.split('___')[1]);
-        if (updatedHistory[idx]) updatedHistory[idx].date = finalTimestamp;
+        if (updatedHistory[idx]) {
+          updatedHistory[idx].date = finalTimestamp;
+          updatedHistory[idx].isManual = true; // Mark as manual on update
+        }
       } else {
-        updatedHistory.push({ status: 'Interviewing', date: finalTimestamp });
+        // FIX: Add 'isManual' flag so the calendar knows this is a manual booking
+        updatedHistory.push({ 
+          status: 'Interviewing', 
+          date: finalTimestamp, 
+          isManual: true 
+        });
       }
 
       await supabase.from('applicants').update({ 
@@ -124,15 +124,13 @@ export default function CalendarView() {
         status_history: updatedHistory 
       }).eq('id', selectedApp.id);
 
-      alert("Success! Check your Google Calendar in a few moments.");
+      alert("Success! Google Calendar updated.");
       setShowModal(false);
       setResumeFile(null);
       fetchData();
     } catch (err) {
       alert("Sync Error: " + err.message);
-    } finally {
-      setIsSyncing(false);
-    }
+    } finally { setIsSyncing(false); }
   };
 
   const confirmDelete = async () => {
@@ -148,23 +146,28 @@ export default function CalendarView() {
 
   if (loading) return (
     <div className="h-screen flex items-center justify-center bg-white">
-      <div className="font-black text-blue-600 text-6xl animate-pulse italic tracking-tighter">GENIEBOOK</div>
+      <div className="font-black text-blue-600 text-6xl animate-pulse italic tracking-tighter uppercase">GENIEBOOK</div>
     </div>
   );
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-10 relative">
-      <div className="bg-white p-10 rounded-[4rem] shadow-xl border border-slate-50 flex justify-between items-center mb-10">
-        <h1 className="text-4xl font-black text-slate-900 italic tracking-tighter">Scheduler</h1>
+    <div className="max-w-7xl mx-auto px-6 py-10 relative pb-32">
+      {/* Header */}
+      <div className="bg-white p-12 rounded-[4rem] border-4 border-slate-900 shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] flex justify-between items-center mb-12">
+        <div>
+          <h1 className="text-6xl font-black text-slate-900 italic tracking-tighter uppercase leading-none">Scheduler</h1>
+          <p className="text-[10px] font-black uppercase text-slate-400 tracking-[0.3em] mt-2">Manual Interview Bookings Only</p>
+        </div>
         <button 
           onClick={() => { setIsManagementMode(false); setStep(1); setShowModal(true); }} 
-          className="bg-blue-600 text-white px-10 py-5 rounded-[2rem] font-black text-xs uppercase shadow-2xl hover:bg-blue-700 tracking-widest active:scale-95 transition-all"
+          className="bg-blue-600 text-white px-12 py-6 rounded-[2.5rem] border-4 border-slate-900 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] font-black text-xs uppercase tracking-widest hover:translate-y-[-4px] active:translate-y-[2px] active:shadow-none transition-all"
         >
           + New Schedule
         </button>
       </div>
 
-      <div className="bg-white p-8 rounded-[4rem] shadow-2xl border border-slate-50" style={{ height: '750px' }}>
+      {/* Calendar Grid */}
+      <div className="bg-white p-10 rounded-[4.5rem] border-4 border-slate-900 shadow-[20px_20px_0px_0px_rgba(15,23,42,1)]" style={{ height: '800px' }}>
         <Calendar 
           localizer={localizer} 
           events={events} 
@@ -184,90 +187,103 @@ export default function CalendarView() {
             setShowModal(true); 
           }}
           defaultView="week"
-          eventPropGetter={() => ({ style: { backgroundColor: '#3b82f6', borderRadius: '14px', border: 'none', fontWeight: 'bold' } })}
+          eventPropGetter={() => ({ 
+            style: { 
+              backgroundColor: '#3b82f6', 
+              borderRadius: '20px', 
+              border: '3px solid #0f172a', 
+              fontWeight: '900',
+              textTransform: 'uppercase',
+              fontSize: '10px',
+              padding: '4px 10px'
+            } 
+          })}
         />
       </div>
 
+      {/* Modal Interface */}
       {showModal && (
-        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[100] flex items-center justify-center p-6">
-          <div className="bg-white w-full max-w-lg rounded-[4rem] shadow-2xl overflow-hidden relative">
+        <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md z-[100] flex items-center justify-center p-6">
+          <div className="bg-white w-full max-w-lg rounded-[4rem] border-8 border-slate-900 shadow-[25px_25px_0px_0px_rgba(0,0,0,1)] overflow-hidden relative animate-in zoom-in duration-200">
             
             {isSyncing && (
-              <div className="absolute inset-0 bg-white/90 z-50 flex flex-col items-center justify-center space-y-4">
-                <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                <p className="font-black text-slate-900 text-[10px] uppercase tracking-widest italic">Syncing to Google...</p>
+              <div className="absolute inset-0 bg-white/95 z-50 flex flex-col items-center justify-center space-y-4">
+                <div className="w-16 h-16 border-8 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                <p className="font-black text-slate-900 text-xs uppercase tracking-widest italic">Syncing to Google...</p>
               </div>
             )}
 
-            <div className={`p-10 text-white flex justify-between items-center ${isManagementMode ? 'bg-blue-600' : 'bg-slate-900'}`}>
-              <h3 className="text-2xl font-black italic">{isManagementMode ? 'Manage' : 'Step ' + step}</h3>
-              <button onClick={() => setShowModal(false)} className="text-2xl font-bold opacity-40 hover:opacity-100 transition-opacity">✕</button>
+            <div className={`p-12 text-white flex justify-between items-center ${isManagementMode ? 'bg-blue-600' : 'bg-slate-900'}`}>
+              <h3 className="text-4xl font-black italic uppercase tracking-tighter">{isManagementMode ? 'Manage' : 'Step ' + step}</h3>
+              <button onClick={() => setShowModal(false)} className="text-3xl font-black opacity-30 hover:opacity-100 transition-opacity">✕</button>
             </div>
 
-            <div className="p-10 space-y-6">
+            <div className="p-12 space-y-8">
               {step === 1 ? (
-                <div className="space-y-4">
+                <div className="space-y-6">
                   <input 
                     type="text" 
                     placeholder="Search candidate..." 
-                    className="w-full p-5 bg-slate-50 rounded-[2rem] font-bold outline-none border focus:border-blue-500 shadow-inner" 
+                    className="w-full p-6 bg-slate-50 border-4 border-slate-900 rounded-[2rem] font-black outline-none shadow-inner uppercase text-sm" 
                     value={searchCandidate} 
                     onChange={e => setSearchCandidate(e.target.value)} 
                   />
-                  <div className="space-y-2 max-h-[300px] overflow-y-auto no-scrollbar pr-1">
+                  <div className="space-y-3 max-h-[350px] overflow-y-auto no-scrollbar">
                     {applicants
                       .filter(a => a.name.toLowerCase().includes(searchCandidate.toLowerCase()))
                       .map(app => (
                         <button 
                           key={app.id} 
                           onClick={() => { setSelectedApp(app); setStep(2); }} 
-                          className="w-full text-left p-6 hover:bg-blue-50 rounded-[2rem] border border-slate-50 flex justify-between group transition-all"
+                          className="w-full text-left p-6 bg-white hover:bg-blue-50 rounded-[2.5rem] border-4 border-slate-900 flex justify-between items-center group transition-all shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] hover:translate-x-1 hover:translate-y-[-2px]"
                         >
                           <div>
-                            <div className="font-black text-slate-800 text-lg group-hover:text-blue-600 transition-colors">{app.name}</div>
-                            <div className="text-[10px] uppercase font-bold text-slate-400 tracking-widest">{app.job_role}</div>
+                            <div className="font-black text-slate-900 text-xl uppercase tracking-tighter italic">{app.name}</div>
+                            <div className="text-[9px] uppercase font-black text-slate-400 tracking-widest">{app.job_role}</div>
                           </div>
-                          <span className="text-blue-500 font-black opacity-0 group-hover:opacity-100 transition-all">SELECT →</span>
+                          <span className="text-blue-600 font-black text-xs opacity-0 group-hover:opacity-100 transition-all">SELECT →</span>
                         </button>
                     ))}
                   </div>
                 </div>
               ) : (
-                <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
-                  <div className="bg-slate-50 p-6 rounded-[2.5rem] font-black text-slate-800 italic border border-slate-100">
-                    {selectedApp?.name}
-                    <div className="text-[10px] not-italic font-bold text-slate-400 uppercase tracking-widest mt-1">
-                      {selectedApp?.job_role} {selectedApp?.resume_metadata?.url ? '✓ (Resume Ready)' : ''}
+                <div className="space-y-8">
+                  <div className="bg-slate-900 p-8 rounded-[3rem] text-white border-4 border-slate-900">
+                    <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Target Candidate</p>
+                    <div className="text-3xl font-black italic uppercase tracking-tighter leading-none">{selectedApp?.name}</div>
+                    <div className="text-[10px] font-black text-white/40 uppercase tracking-widest mt-2">
+                      {selectedApp?.job_role} {selectedApp?.resume_metadata?.url ? '• Resume Ready' : ''}
                     </div>
                   </div>
                   
-                  <div className="space-y-2">
-                    <label className="text-[9px] font-black uppercase text-slate-400 ml-5 tracking-[0.2em]">
-                      {selectedApp?.resume_metadata?.url ? 'Update Attachment (Optional)' : 'Upload Attachment'}
-                    </label>
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-4 tracking-widest">Date & Time</label>
+                    <div className="grid grid-cols-2 gap-4">
+                      <input type="date" className="p-5 bg-slate-50 border-4 border-slate-900 rounded-[2rem] font-black outline-none uppercase text-xs" value={formDate} onChange={e => setFormDate(e.target.value)} />
+                      <input type="time" className="p-5 bg-slate-50 border-4 border-slate-900 rounded-[2rem] font-black outline-none uppercase text-xs" value={formTime} onChange={e => setFormTime(e.target.value)} />
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black uppercase text-slate-400 ml-4 tracking-widest">Attachment</label>
                     <input 
                       type="file" 
-                      className="w-full p-4 bg-slate-50 rounded-[2rem] text-xs font-bold border-none outline-none shadow-inner" 
+                      className="w-full p-4 bg-slate-50 border-4 border-slate-900 rounded-[2rem] text-[10px] font-black uppercase" 
                       onChange={(e) => setResumeFile(e.target.files?.[0] || null)} 
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <input type="date" className="p-5 bg-slate-50 rounded-[2rem] font-bold outline-none shadow-inner" value={formDate} onChange={e => setFormDate(e.target.value)} />
-                    <input type="time" className="p-5 bg-slate-50 rounded-[2rem] font-bold outline-none shadow-inner" value={formTime} onChange={e => setFormTime(e.target.value)} />
-                  </div>
-
-                  <div className="flex flex-col gap-3 pt-6 border-t border-slate-50">
+                  <div className="flex flex-col gap-4 pt-4">
                     <button 
                       onClick={handleSave} 
-                      className="w-full py-5 bg-blue-600 text-white rounded-[2rem] font-black text-[11px] uppercase tracking-widest shadow-xl active:scale-95 transition-all"
+                      className="w-full py-6 bg-blue-600 text-white rounded-[2.5rem] border-4 border-slate-900 font-black text-sm uppercase tracking-widest shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-4px] active:translate-y-[2px] active:shadow-none transition-all"
                     >
                         Confirm & Sync
                     </button>
                     {isManagementMode ? (
                         <button onClick={confirmDelete} className="w-full py-4 text-rose-600 font-black text-[10px] uppercase tracking-widest hover:bg-rose-50 rounded-2xl transition-all">Delete Schedule</button>
                     ) : (
-                        <button onClick={() => setStep(1)} className="w-full py-4 text-slate-400 font-black text-[10px] uppercase tracking-widest hover:bg-slate-50 rounded-2xl transition-all">Back</button>
+                        <button onClick={() => setStep(1)} className="w-full py-4 text-slate-400 font-black text-[10px] uppercase tracking-widest hover:bg-slate-50 rounded-2xl transition-all">Back to List</button>
                     )}
                   </div>
                 </div>
