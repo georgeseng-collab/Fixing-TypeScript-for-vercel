@@ -8,26 +8,31 @@ export default function Archive() {
 
   const fetchData = async () => {
     const data = await getApplicants();
-    setApplicants(data.filter(a => a.status === 'Quit' || a.status === 'Blacklisted'));
+    // Include ALL inactive statuses
+    setApplicants(data.filter(a => 
+      a.status === 'Quit' || 
+      a.status === 'Blacklisted' || 
+      a.status === 'Failed Interview'
+    ));
     setLoading(false);
   };
 
   useEffect(() => { fetchData(); }, []);
 
   const handleDelete = async (app) => {
-    if (window.confirm(`Permanently delete ${app.name}? This cannot be undone.`)) {
+    if (window.confirm(`Permanently delete ${app.name}?`)) {
       await deleteApplicant(app.id, app.resume_metadata?.path);
       fetchData();
     }
   };
 
-  if (loading) return <div className="text-center p-20 font-bold text-slate-400 animate-pulse">SYNCHRONIZING ARCHIVE...</div>;
+  if (loading) return <div className="text-center p-20 font-bold text-slate-400 animate-pulse uppercase">Syncing Archive...</div>;
 
   return (
     <div className="space-y-8 animate-fade-in">
       <div>
         <h1 className="text-3xl font-black text-slate-800 tracking-tight">Archive</h1>
-        <p className="text-slate-500 text-sm mt-1 font-medium">Inactive records for GenieBook talent pool.</p>
+        <p className="text-slate-500 text-sm mt-1 font-medium">Historical records of inactive talent.</p>
       </div>
 
       <div className="bg-white border border-slate-200 rounded-[2rem] overflow-hidden shadow-sm">
@@ -35,7 +40,7 @@ export default function Archive() {
           <thead className="bg-slate-50 border-b border-slate-100">
             <tr>
               <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Candidate</th>
-              <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Job Role</th>
+              <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Role</th>
               <th className="p-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Reason</th>
               <th className="p-5 text-right"></th>
             </tr>
@@ -52,13 +57,15 @@ export default function Archive() {
                 </td>
                 <td className="p-5">
                   <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase ${
-                    app.status === 'Blacklisted' ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-500'
+                    app.status === 'Blacklisted' ? 'bg-red-100 text-red-600' : 
+                    app.status === 'Failed Interview' ? 'bg-amber-100 text-amber-600' :
+                    'bg-slate-100 text-slate-500'
                   }`}>
                     {app.status}
                   </span>
                 </td>
                 <td className="p-5 text-right">
-                  <button onClick={() => handleDelete(app)} className="opacity-0 group-hover:opacity-100 transition-opacity p-2 hover:bg-red-50 rounded-xl text-red-400">
+                  <button onClick={() => handleDelete(app)} className="opacity-0 group-hover:opacity-100 p-2 hover:bg-red-50 rounded-xl text-red-400 transition-all">
                     🗑️
                   </button>
                 </td>
@@ -67,10 +74,7 @@ export default function Archive() {
           </tbody>
         </table>
         {applicants.length === 0 && (
-          <div className="py-24 text-center">
-            <div className="text-4xl mb-4">📂</div>
-            <div className="text-slate-400 font-bold">Archive is currently empty.</div>
-          </div>
+          <div className="py-24 text-center text-slate-400 font-bold tracking-widest uppercase text-xs">No records found.</div>
         )}
       </div>
     </div>
