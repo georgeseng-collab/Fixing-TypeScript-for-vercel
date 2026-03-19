@@ -9,7 +9,7 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 const locales = { 'en-US': enUS };
 const localizer = dateFnsLocalizer({ format, parse, startOfWeek, getDay, locales });
 
-// --- UPDATED NEW SCRIPT URL ---
+// --- LATEST SCRIPT URL ---
 const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyBzu5QfSOF0P-P5vaQYAZk9vgM2r92pfoNKJXTvakQxYpvisRa6GlnAIcjtZvUgqNw/exec';
 
 const MEETING_ROOMS = [
@@ -64,7 +64,8 @@ export default function CalendarView() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const { data: apps } = await supabase.from('applicants').select('*');
+      // Fetch basic list for the dropdown
+      const { data: apps } = await supabase.from('applicants').select('id, name, job_role, status_history');
       const { data: team } = await supabase.from('team_members').select('*');
       setApplicants(apps || []);
       setTeamMembers(team || []);
@@ -83,6 +84,21 @@ export default function CalendarView() {
     } finally { setLoading(false); }
   };
 
+  // NEW FEATURE: Explicitly Fetch Resume Data on selection
+  const handleSelectCandidate = async (appId) => {
+    const baseCandidate = applicants.find(a => a.id === appId);
+    if (!baseCandidate) return;
+
+    // Direct retrieve from Supabase to ensure resume_base64 isn't lost or null
+    const { data: fullData } = await supabase
+      .from('applicants')
+      .select('*')
+      .eq('id', appId)
+      .single();
+
+    setSelectedApp(fullData || baseCandidate);
+  };
+
   const handleManualScan = async () => {
     const emailsToCheck = [selectedRoom, ...selectedGuests].filter(Boolean).join(',');
     setIsScanning(true);
@@ -94,17 +110,9 @@ export default function CalendarView() {
       const resp = await fetch(scanUrl);
       const result = await resp.text();
 
-      if (result.includes("UNREACHABLE:")) {
-        setUnreachableEmails(result.split("UNREACHABLE:")[1].split("|")[0].split(",").filter(Boolean));
-      }
-      if (result.includes("SUGGESTIONS:")) {
-        const slots = result.split("SUGGESTIONS:")[1].split("|")[0].split(",").filter(s => s.trim() !== "");
-        setSuggestions(slots);
-      }
-      if (result.includes("BUSY_PEOPLE:")) {
-        const list = result.split("BUSY_PEOPLE:")[1].split("|")[0].split(",").filter(Boolean);
-        setBusyPeople(list);
-      }
+      if (result.includes("UNREACHABLE:")) setUnreachableEmails(result.split("UNREACHABLE:")[1].split("|")[0].split(",").filter(Boolean));
+      if (result.includes("SUGGESTIONS:")) setSuggestions(result.split("SUGGESTIONS:")[1].split("|")[0].split(",").filter(s => s.trim() !== ""));
+      if (result.includes("BUSY_PEOPLE:")) setBusyPeople(result.split("BUSY_PEOPLE:")[1].split("|")[0].split(",").filter(Boolean));
       if (result.includes("ROOM_ALT:")) {
         const alts = result.split("ROOM_ALT:")[1].split(";").map(str => {
           const [name, email] = str.split("||");
@@ -141,19 +149,19 @@ export default function CalendarView() {
     try {
       const allGuests = [...selectedGuests, ...(customGuest ? customGuest.split(',').map(e => e.trim()) : [])].join(',');
       
-      // FEATURE: Strict mapping of resume data to ensure Google Drive folder command works
-      const resumeString = selectedApp.resume_base64 || selectedApp.resume || selectedApp.file_data || "";
+      // CRITICAL: Pull from retrieved Supabase data
+      const finalResume = selectedApp.resume_base64 || selectedApp.resume || "";
 
       const payload = {
-        name: selectedApp.name,           // Required for naming format: DATE_NAME_Resume.pdf
-        role: selectedApp.job_role,       // Required for Event Title
-        date: formDate,                   // Required for naming format
+        name: selectedApp.name,
+        role: selectedApp.job_role,
+        date: formDate,
         time: formTime,
-        guests: allGuests, 
-        roomEmail: selectedRoom, 
-        duration: duration,
+        guests: allGuests,
+        roomEmail: selectedRoom,
         roomName: MEETING_ROOMS.find(r => r.email === selectedRoom)?.name || 'Online',
-        fileBase64: resumeString          // Syncing actual resume data
+        duration: duration,
+        fileBase64: finalResume // THE CORE FIX
       };
 
       await fetch(GOOGLE_SCRIPT_URL, {
@@ -171,21 +179,18 @@ export default function CalendarView() {
     } finally { setIsSyncing(false); }
   };
 
-  // Internal Helper to check for any resume field variant
-  const getResumeStatus = (app) => (app?.resume_base64 || app?.resume || app?.file_data);
-
   return (
     <div className="p-10 bg-slate-50 min-h-screen font-sans text-slate-900">
       {/* HEADER */}
       <div className="flex justify-between items-center mb-10 bg-white p-8 rounded-3xl border-4 border-black shadow-[8px_8px_0_0_#000]">
-        <h1 className="text-5xl font-black italic uppercase leading-none tracking-tighter">GenieBook Scheduler</h1>
-        <button onClick={() => { resetForm(); setShowModal(true); }} className="bg-blue-600 text-white p-5 px-10 border-4 border-black font-black uppercase shadow-[4px_4px_0_0_#000] hover:bg-black transition-all">+ NEW BOOKING</button>
+        <h1 className="text-5xl font-black italic uppercase leading-none tracking-tighter">Scheduler</h1>
+        <button onClick={() => { resetForm(); setShowModal(true); }} className="bg-blue-600 text-white p-5 px-10 border-4 border-black font-black shadow-[4px_4px_0_0_#000] hover:bg-black transition-all">+ NEW</button>
       </div>
 
       <div className="h-[750px] border-4 border-black p-4 bg-white rounded-3xl shadow-[12px_12px_0_0_#000]">
         <Calendar localizer={localizer} events={events} selectable defaultView="week"
           onSelectEvent={(e) => { 
-            setSelectedApp(e.candidate); setFormDate(format(e.start, 'yyyy-MM-dd')); setFormTime(format(e.start, 'HH:mm')); setStep(3); setShowModal(true); 
+            handleSelectCandidate(e.candidate.id); setFormDate(format(e.start, 'yyyy-MM-dd')); setFormTime(format(e.start, 'HH:mm')); setStep(3); setShowModal(true); 
           }}
           onSelectSlot={({start}) => { resetForm(); setFormDate(format(start, 'yyyy-MM-dd')); setShowModal(true); }}
         />
@@ -194,206 +199,124 @@ export default function CalendarView() {
       {/* SUCCESS MODAL */}
       {showSuccessModal && (
         <div className="fixed inset-0 bg-black/80 z-[200] flex items-center justify-center p-6 backdrop-blur-md">
-            <div className="bg-white border-8 border-black p-12 rounded-[3rem] max-w-md w-full text-center shadow-[20px_20px_0_0_#000] animate-in zoom-in duration-300">
-                <div className="w-24 h-24 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-5xl mx-auto mb-6 border-4 border-black font-black">✓</div>
-                <h2 className="text-3xl font-black uppercase italic mb-2">Sync Complete</h2>
-                <p className="font-bold text-slate-500 mb-8 uppercase text-xs tracking-widest">Calendar & ATS are now updated</p>
-                <button onClick={() => { setShowSuccessModal(false); resetForm(); }} className="w-full bg-black text-white p-5 rounded-2xl font-black uppercase tracking-tighter hover:bg-blue-600 transition-all">Done</button>
+            <div className="bg-white border-8 border-black p-12 rounded-[3rem] max-w-md w-full text-center shadow-[20px_20px_0_0_#000]">
+                <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-4xl mx-auto mb-6 border-4 border-black font-black">✓</div>
+                <h2 className="text-2xl font-black uppercase italic mb-4">Interview Synced</h2>
+                <button onClick={() => { setShowSuccessModal(false); resetForm(); }} className="w-full bg-black text-white p-4 rounded-xl font-black uppercase hover:bg-blue-600 transition-all">Back to Calendar</button>
             </div>
         </div>
       )}
 
       {showModal && (
-        <div className="fixed inset-0 bg-black/90 z-[100] flex items-center justify-center p-6 backdrop-blur-sm">
+        <div className="fixed inset-0 bg-black/90 z-[100] flex items-center justify-center p-6 backdrop-blur-sm text-left">
           <div className="bg-white border-8 border-black w-full max-w-4xl max-h-[95vh] overflow-y-auto p-10 rounded-[3rem] shadow-[25px_25px_0_0_#000]">
             
             <div className="flex justify-between items-center mb-8 border-b-4 border-black pb-4">
                 <div className="flex gap-2 w-1/2">
                     {[1, 2, 3].map(i => <div key={i} className={`h-3 flex-1 border-2 border-black ${step >= i ? 'bg-blue-600' : 'bg-slate-200'}`} />)}
                 </div>
-                <div className="flex items-center gap-4">
-                    {selectedApp && <button onClick={handleDelete} className="bg-rose-600 text-white p-2 border-2 border-black font-black text-[10px] uppercase shadow-[3px_3px_0_0_#000] hover:bg-black transition-all">Delete</button>}
-                    <button onClick={() => setShowModal(false)} className="text-4xl font-black hover:rotate-90 transition-transform leading-none">✕</button>
-                </div>
+                <button onClick={() => setShowModal(false)} className="text-4xl font-black leading-none">✕</button>
             </div>
 
-            <div className="space-y-8">
-              {/* STEP 1 */}
-              {step === 1 && (
-                <div className="space-y-6">
-                  <h2 className="text-4xl font-black italic uppercase leading-none">1. Choose Candidate</h2>
-                  <select className="w-full p-5 border-4 border-black font-black bg-white text-xl outline-none rounded-2xl" value={selectedApp?.id || ''} onChange={e => setSelectedApp(applicants.find(a => a.id === e.target.value))}>
-                    <option value="">-- Select Candidate --</option>
-                    {applicants.map(a => <option key={a.id} value={a.id}>{a.name} ({a.job_role})</option>)}
-                  </select>
-                  
-                  {/* RESUME INDICATOR - Improved detection logic */}
-                  {selectedApp && (
-                    <div className={`p-4 border-2 border-black rounded-xl font-black text-xs uppercase italic flex items-center gap-3 ${getResumeStatus(selectedApp) ? 'bg-emerald-50 text-emerald-700 border-emerald-500' : 'bg-rose-50 text-rose-700 border-rose-500'}`}>
-                        <span>{getResumeStatus(selectedApp) ? '✓ Resume string detected for Drive sync' : '⚠️ No Resume found in ATS for this candidate'}</span>
+            {step === 1 && (
+              <div className="space-y-6">
+                <h2 className="text-4xl font-black italic uppercase">1. Choose Candidate</h2>
+                <select className="w-full p-5 border-4 border-black font-black bg-white text-xl rounded-2xl" value={selectedApp?.id || ''} onChange={e => handleSelectCandidate(e.target.value)}>
+                  <option value="">-- Choose Candidate --</option>
+                  {applicants.map(a => <option key={a.id} value={a.id}>{a.name} ({a.job_role})</option>)}
+                </select>
+                
+                {selectedApp && (
+                  <div className={`p-4 border-2 border-black rounded-xl font-black text-xs uppercase italic ${ (selectedApp.resume_base64 || selectedApp.resume) ? 'bg-emerald-50 text-emerald-700 border-emerald-500' : 'bg-rose-50 text-rose-700 border-rose-500'}`}>
+                      <span>{ (selectedApp.resume_base64 || selectedApp.resume) ? '✓ Base64 Data Verified from Supabase' : '⚠️ Missing Resume in DB'}</span>
+                  </div>
+                )}
+                <button disabled={!selectedApp} onClick={() => setStep(2)} className="w-full p-6 bg-black text-white font-black uppercase shadow-[8px_8px_0_0_#000] hover:bg-blue-600 transition-all rounded-2xl">Setup Logistics →</button>
+              </div>
+            )}
+
+            {step === 2 && (
+              <div className="space-y-6">
+                <h2 className="text-4xl font-black italic uppercase tracking-tighter leading-none">2. Logistics & Scanning</h2>
+                
+                {hasScanned && busyPeople.length > 0 && (
+                    <div className="p-4 bg-amber-50 border-4 border-amber-500 rounded-2xl font-black text-[10px] text-amber-900 uppercase">
+                        Personnel Busy: {busyPeople.map(email => teamMembers.find(t => t.email === email)?.name || email).join(", ")}
                     </div>
-                  )}
+                )}
 
-                  <button disabled={!selectedApp} onClick={() => setStep(2)} className="w-full p-6 bg-black text-white font-black uppercase shadow-[8px_8px_0_0_#000] hover:bg-blue-600 transition-all rounded-2xl">Continue →</button>
-                </div>
-              )}
-
-              {/* STEP 2 */}
-              {step === 2 && (
-                <div className="space-y-6">
-                  <h2 className="text-4xl font-black italic uppercase tracking-tighter leading-none">2. Logistics & Scanning</h2>
-                  
-                  {hasScanned && busyPeople.length > 0 && (
-                    <div className="p-5 bg-amber-100 border-4 border-amber-500 rounded-2xl shadow-[6px_6px_0_0_#f59e0b]">
-                        <p className="font-black uppercase text-xs text-amber-700">⚠️ Personnel Conflict!</p>
-                        <p className="text-[10px] font-bold mt-1 text-amber-900 opacity-80">
-                            The following staff are busy: 
-                            <span className="font-black ml-1 uppercase">{busyPeople.map(email => teamMembers.find(t => t.email === email)?.name || email).join(", ")}</span>
-                        </p>
-                    </div>
-                  )}
-
-                  {hasScanned && roomAlt.length > 0 && selectedRoom && !suggestions.includes(formTime) && (
-                    <div className="p-5 bg-rose-600 border-4 border-black shadow-[6px_6px_0_0_#000] text-white animate-pulse rounded-2xl">
-                      <p className="font-black uppercase text-xs">⚠️ Room Conflict Detected!</p>
+                {hasScanned && roomAlt.length > 0 && selectedRoom && !suggestions.includes(formTime) && (
+                    <div className="p-4 bg-rose-600 border-4 border-black text-white rounded-2xl">
+                      <p className="font-black uppercase text-xs">Room Busy. Suggested Alts:</p>
                       <div className="flex flex-wrap gap-2 mt-2">
-                        {roomAlt.map(alt => (
-                          <button key={alt.email} onClick={() => { setSelectedRoom(alt.email); handleManualScan(); }} className="bg-white text-rose-600 px-4 py-1.5 rounded-lg border-2 border-black font-black text-[10px] hover:bg-yellow-300 transition-all">Use {alt.name}</button>
+                        {roomAlt.map(alt => ( <button key={alt.email} onClick={() => { setSelectedRoom(alt.email); handleManualScan(); }} className="bg-white text-rose-600 px-3 py-1 rounded border-2 border-black font-black text-[10px]">Use {alt.name}</button> ))}
+                      </div>
+                    </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-6">
+                    <div className="space-y-4">
+                        <div className="p-4 bg-yellow-300 border-4 border-black rounded-2xl shadow-[4px_4px_0_0_#000]">
+                          <label className="font-black text-[10px] uppercase italic">Date {isWeekend(new Date(formDate)) && "⚠️ WKND"}</label>
+                          <input type="date" value={formDate} onChange={e => setFormDate(e.target.value)} className="w-full p-2 border-2 border-black font-black mt-1" />
+                        </div>
+                        <div className="p-4 bg-white border-4 border-black rounded-2xl">
+                          <label className="font-black text-[10px] uppercase italic">Room</label>
+                          <select className="w-full p-2 border-2 border-black font-black mt-1" value={selectedRoom} onChange={e => setSelectedRoom(e.target.value)}>
+                              <option value="">Virtual Session</option>
+                              {MEETING_ROOMS.map(r => <option key={r.email} value={r.email}>{r.name}</option>)}
+                          </select>
+                        </div>
+                    </div>
+                    <div className="p-4 bg-slate-50 border-4 border-black h-[220px] overflow-y-auto rounded-2xl">
+                      <label className="font-black text-[10px] uppercase italic">Panel</label>
+                      <div className="space-y-2 mt-2">
+                        {teamMembers.map(m => (
+                          <button key={m.email} onClick={() => setSelectedGuests(prev => prev.includes(m.email) ? prev.filter(x => x !== m.email) : [...prev, m.email])}
+                              className={`w-full p-2 border-2 border-black font-black text-[10px] uppercase transition-all rounded-xl ${selectedGuests.includes(m.email) ? 'bg-blue-600 text-white' : 'bg-white shadow-[2px_2px_0_0_#000]'}`}>
+                              {m.name}
+                          </button>
                         ))}
                       </div>
                     </div>
+                </div>
+
+                <div className="p-6 border-4 border-black bg-blue-50 rounded-[2rem]">
+                  {!hasScanned ? (
+                    <button onClick={handleManualScan} className="w-full bg-blue-600 text-white font-black p-5 border-4 border-black shadow-[4px_4px_0_0_#000] uppercase italic rounded-2xl">Scan Free Slots</button>
+                  ) : isScanning ? (
+                    <p className="font-black text-xs animate-pulse text-center">Contacting Google...</p>
+                  ) : (
+                    <div className="grid grid-cols-5 gap-2">
+                      {suggestions.map(t => ( <button key={t} onClick={() => {setFormTime(t); setBypassConflict(false);}} className={`p-2 border-2 border-black font-black text-[10px] rounded-xl transition-all ${formTime === t ? 'bg-emerald-500 text-white' : 'bg-white shadow-[3px_3px_0_0_#000]'}`}>{format(parse(t, 'HH:mm', new Date()), 'hh:mm a')}</button> ))}
+                    </div>
                   )}
-
-                  <div className="grid grid-cols-2 gap-6">
-                    <div className="space-y-4">
-                      <div className="p-4 bg-yellow-300 border-4 border-black rounded-2xl shadow-[4px_4px_0_0_#000]">
-                        <label className="font-black text-[10px] uppercase italic">Date {isWeekend(new Date(formDate)) && "⚠️ WEEKEND"}</label>
-                        <input type="date" value={formDate} onChange={e => setFormDate(e.target.value)} className="w-full p-2 border-2 border-black font-black bg-white mt-1 rounded-xl" />
-                      </div>
-                      <div className="p-4 bg-emerald-100 border-4 border-black rounded-2xl shadow-[4px_4px_0_0_#000]">
-                        <label className="font-black text-[10px] uppercase italic">Duration</label>
-                        <div className="flex gap-2 mt-2">
-                          {[30, 60].map(m => (
-                            <button key={m} onClick={() => setDuration(m)} className={`flex-1 p-2 border-2 border-black font-black text-xs rounded-xl ${duration === m ? 'bg-emerald-500 text-white shadow-none' : 'bg-white shadow-[2px_2px_0_0_#000]'}`}>{m} MIN</button>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="p-4 bg-white border-4 border-black rounded-2xl shadow-[4px_4px_0_0_#000]">
-                        <label className="font-black text-[10px] uppercase italic">Meeting Room</label>
-                        <select className="w-full p-2 border-2 border-black font-black mt-1 bg-white outline-none rounded-xl" value={selectedRoom} onChange={e => setSelectedRoom(e.target.value)}>
-                            <option value="">Virtual Session</option>
-                            {MEETING_ROOMS.map(r => <option key={r.email} value={r.email}>{r.name}</option>)}
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="font-black text-[10px] uppercase italic ml-2">Internal Panel</label>
-                      <div className="grid grid-cols-2 gap-2 p-4 bg-slate-50 border-4 border-black h-[260px] overflow-y-auto rounded-2xl">
-                          {teamMembers.map(m => {
-                            const isUnreachable = unreachableEmails.includes(m.email);
-                            return (
-                              <button key={m.email} onClick={() => setSelectedGuests(prev => prev.includes(m.email) ? prev.filter(x => x !== m.email) : [...prev, m.email])}
-                                  className={`p-2 border-2 border-black font-black text-[10px] uppercase transition-all flex justify-between items-center rounded-xl ${selectedGuests.includes(m.email) ? 'bg-blue-600 text-white translate-y-1' : 'bg-white shadow-[2px_2px_0_0_#000]'} ${isUnreachable ? 'opacity-40 italic' : ''}`}>
-                                  <span>{m.name}</span>
-                                  {isUnreachable && <span className="text-[8px] bg-black text-white px-1">PRIVATE</span>}
-                              </button>
-                            );
-                          })}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className={`p-6 border-4 border-black bg-blue-50 shadow-[8px_8px_0_0_#000] min-h-[220px] rounded-[2rem] transition-all`}>
-                    {!hasScanned ? (
-                      <div className="flex flex-col items-center justify-center py-10">
-                        <button disabled={!selectedRoom && selectedGuests.length === 0} onClick={handleManualScan} className="bg-blue-600 text-white font-black p-5 px-12 border-4 border-black shadow-[4px_4px_0_0_#000] hover:bg-black uppercase italic tracking-widest disabled:opacity-30 rounded-2xl transition-all">Scan Available Slots</button>
-                        <p className="text-[10px] font-black uppercase mt-4 opacity-40 text-black">10:00 AM - 07:00 PM organization window</p>
-                      </div>
-                    ) : isScanning ? (
-                      <div className="flex flex-col items-center justify-center py-10">
-                        <div className="w-12 h-12 border-8 border-black border-t-blue-600 animate-spin mb-4 rounded-full"></div>
-                        <p className="font-black text-xs animate-pulse tracking-widest uppercase italic text-black font-black">Syncing Google...</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-4">
-                        <div className="flex justify-between items-center border-b-2 border-black pb-2 text-black">
-                           <p className="font-black text-[10px] uppercase italic text-black">Verified Free Gaps ({duration}m blocks)</p>
-                           <button onClick={handleManualScan} className="text-[8px] font-black underline uppercase hover:text-blue-600 transition-colors">Re-Scan</button>
-                        </div>
-                        {suggestions.length > 0 ? (
-                          <div className="grid grid-cols-5 gap-2">
-                            {suggestions.map(t => (
-                              <button key={t} onClick={() => {setFormTime(t); setBypassConflict(false);}} className={`p-2 border-2 border-black font-black text-[10px] rounded-xl transition-all ${formTime === t ? 'bg-emerald-500 text-white translate-y-1 shadow-none' : 'bg-white shadow-[3px_3px_0_0_#000] hover:bg-yellow-100 text-black'}`}>
-                                {format(parse(t, 'HH:mm', new Date()), 'hh:mm a')}
-                              </button>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="text-center py-6 text-rose-600 font-black uppercase text-[10px] italic">No common availability found. Try shifting date or changing panel.</div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="p-4 border-4 border-black bg-slate-100 flex items-center justify-between rounded-2xl">
-                    <label className="flex items-center gap-3 cursor-pointer group">
-                        <input type="checkbox" checked={bypassConflict} onChange={e => setBypassConflict(e.target.checked)} className="w-6 h-6 border-4 border-black bg-white appearance-none checked:bg-rose-600 cursor-pointer rounded-lg shadow-inner" />
-                        <span className="font-black text-xs uppercase italic tracking-tighter group-hover:text-blue-600 text-black">Bypass Schedule Check (Manual Force)</span>
-                    </label>
-                    {bypassConflict && (
-                        <input type="time" value={formTime} onChange={e => setFormTime(e.target.value)} className="p-2 border-2 border-black font-black bg-white outline-none rounded-lg text-black" />
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4 pt-4">
-                    <button onClick={() => setStep(1)} className="p-4 border-4 border-black font-black uppercase hover:bg-slate-100 rounded-2xl transition-all text-black">Back</button>
-                    <button disabled={!formTime} onClick={() => setStep(3)} className="p-4 bg-black text-white font-black uppercase shadow-[6px_6px_0_0_#000] active:translate-y-1 transition-all rounded-2xl">Final Review →</button>
-                  </div>
                 </div>
-              )}
 
-              {/* STEP 3 */}
-              {step === 3 && (
-                <div className="space-y-6">
-                  <h2 className="text-4xl font-black italic uppercase tracking-tighter leading-none border-b-4 border-black pb-4 text-black">3. Final Review</h2>
-                  
-                  <div className="bg-slate-900 text-white p-10 border-4 border-black rounded-[2.5rem] shadow-[12px_12px_0_0_#000] space-y-8 relative overflow-hidden">
-                      <div className="absolute top-0 right-0 p-10 opacity-10 font-black text-8xl italic">ATS</div>
-                      <div className="relative z-10">
-                        <div className="border-b border-white/20 pb-4 mb-6 text-left">
-                            <p className="text-[10px] uppercase font-black opacity-40 mb-1 tracking-widest leading-none">Applicant</p>
-                            <h3 className="font-black text-5xl uppercase tracking-tighter leading-none text-white">{selectedApp?.name}</h3>
-                        </div>
-                        <div className="grid grid-cols-2 gap-10 text-left">
-                            <div>
-                                <p className="text-[10px] uppercase font-black opacity-40 mb-1 tracking-widest leading-none text-white">Schedule</p>
-                                <p className="font-black text-2xl leading-none italic text-white">{formDate}</p>
-                                <p className="font-black text-4xl text-emerald-400 mt-2 uppercase leading-none">{formTime ? format(parse(formTime, 'HH:mm', new Date()), 'hh:mm a') : 'MANUAL'}</p>
-                            </div>
-                            <div>
-                                <p className="text-[10px] uppercase font-black opacity-40 mb-1 tracking-widest leading-none text-white">Venue</p>
-                                <p className="font-black text-xl leading-tight uppercase underline decoration-emerald-500 text-white">{MEETING_ROOMS.find(r => r.email === selectedRoom)?.name || 'Online Portal'}</p>
-                                <p className="font-black text-[10px] uppercase opacity-60 mt-3 italic text-white">{duration} Minute Session</p>
-                            </div>
-                        </div>
-                      </div>
-                  </div>
-
-                  <div className="space-y-1 text-left">
-                    <p className="text-[9px] font-black uppercase italic ml-2 opacity-50 tracking-tighter text-black">Email CC Distribution</p>
-                    <input type="text" value={customGuest} onChange={e => setCustomGuest(e.target.value)} className="w-full p-5 border-4 border-black font-black outline-none bg-white rounded-2xl shadow-inner text-lg text-black" placeholder="janice.sia@geniebook.com" />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4 pt-4">
-                    <button onClick={() => setStep(2)} className="p-5 border-4 border-black font-black uppercase hover:bg-slate-50 transition-all rounded-2xl italic tracking-tighter text-black">← Back to Logistics</button>
-                    <button disabled={isSyncing} onClick={handleSave} className={`p-5 font-black uppercase border-4 border-black shadow-[8px_8px_0_0_#000] active:translate-y-1 transition-all rounded-2xl ${isSyncing ? 'bg-slate-200 text-slate-400 animate-pulse' : 'bg-emerald-500 text-white hover:bg-black underline decoration-white'}`}>
-                        {isSyncing ? 'Synchronizing...' : 'Finalize & Sync Booking'}
-                    </button>
-                  </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <button onClick={() => setStep(1)} className="p-4 border-4 border-black font-black rounded-2xl">Back</button>
+                  <button disabled={!formTime} onClick={() => setStep(3)} className="p-4 bg-black text-white font-black uppercase rounded-2xl">Review →</button>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
+
+            {step === 3 && (
+              <div className="space-y-6">
+                <h2 className="text-4xl font-black italic uppercase tracking-tighter leading-none border-b-4 border-black pb-4 text-left">3. Final Review</h2>
+                <div className="bg-slate-900 text-white p-10 border-4 border-black rounded-[2.5rem] shadow-[12px_12px_0_0_#000] text-left">
+                    <h3 className="font-black text-5xl uppercase mb-6">{selectedApp?.name}</h3>
+                    <div className="grid grid-cols-2 gap-10">
+                        <div><p className="text-[10px] uppercase opacity-40">Schedule</p><p className="font-black text-2xl">{formDate}</p><p className="font-black text-4xl text-emerald-400">{formTime}</p></div>
+                        <div><p className="text-[10px] uppercase opacity-40">Venue</p><p className="font-black text-xl uppercase underline decoration-emerald-500">{MEETING_ROOMS.find(r => r.email === selectedRoom)?.name || 'Online'}</p></div>
+                    </div>
+                </div>
+                <input type="text" value={customGuest} onChange={e => setCustomGuest(e.target.value)} className="w-full p-5 border-4 border-black font-black bg-white rounded-2xl" placeholder="CC Janice etc." />
+                <div className="grid grid-cols-2 gap-4">
+                  <button onClick={() => setStep(2)} className="p-5 border-4 border-black font-black rounded-2xl">← Back</button>
+                  <button disabled={isSyncing} onClick={handleSave} className={`p-5 font-black uppercase border-4 border-black shadow-[8px_8px_0_0_#000] active:translate-y-1 transition-all rounded-2xl ${isSyncing ? 'bg-slate-200' : 'bg-emerald-500 text-white hover:bg-black underline'}`}>Finalize & Sync</button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
