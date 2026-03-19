@@ -9,7 +9,8 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 const locales = { 'en-US': enUS };
 const localizer = dateFnsLocalizer({ format, parse, startOfWeek, getDay, locales });
 
-const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwr98yRdN73eDfHmwIOV6Gw-LrT8eU5t7we3RVADgEO7H3iGZWr6G1abDGh7GmRdsud/exec';
+// --- UPDATED GOOGLE SCRIPT URL ---
+const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx97V6FDvGhHmQ3m-SJOZVHnuWVM8luEsclreT0N9TtFOIXbtdSdYaqqVwNtVTMg8jE/exec';
 
 const MEETING_ROOMS = [
   { name: 'Germanium (GE)', email: 'c_18887npjdt67ih5lmtfgahccqnne8@resource.calendar.google.com' },
@@ -43,17 +44,19 @@ export default function CalendarView() {
 
   // SCANNING & VALIDATION DATA
   const [suggestions, setSuggestions] = useState([]); 
-  const [unreachableEmails, setUnreachableEmails] = useState([]); // Track private calendars
+  const [unreachableEmails, setUnreachableEmails] = useState([]); 
+  const [roomAlt, setRoomAlt] = useState([]); // New: Suggestion storage
   const [isScanning, setIsScanning] = useState(false);
   const [hasScanned, setHasScanned] = useState(false);
 
   useEffect(() => { fetchData(); }, []);
 
-  // Reset scan state and unreachable flags if logistics change
+  // Reset scan results if logistics change
   useEffect(() => {
     setHasScanned(false);
     setSuggestions([]);
     setUnreachableEmails([]);
+    setRoomAlt([]);
   }, [formDate, duration, selectedRoom, selectedGuests]);
 
   const fetchData = async () => {
@@ -63,11 +66,18 @@ export default function CalendarView() {
       const { data: team } = await supabase.from('team_members').select('*');
       setApplicants(apps || []);
       setTeamMembers(team || []);
-      const evts = (apps || []).flatMap(app => (app.status_history || [])
-        .filter(h => h && h.isManual).map((h, i) => ({
-          id: `${app.id}_${i}`, candidate: app, start: new Date(h.date), end: addHours(new Date(h.date), 1), title: `INT: ${app.name}`
+      
+      const calendarEvents = (apps || []).flatMap(app => (app.status_history || [])
+        .filter(h => h && h.isManual === true)
+        .map((h, i) => ({
+          id: `${app.id}_${i}`, 
+          candidate: app, 
+          start: new Date(h.date), 
+          end: addHours(new Date(h.date), 1), 
+          title: `INT: ${app.name}`,
+          rawDate: h.date
         })));
-      setEvents(evts);
+      setEvents(calendarEvents);
     } finally { setLoading(false); }
   };
 
@@ -75,35 +85,43 @@ export default function CalendarView() {
     const emailsToCheck = [selectedRoom, ...selectedGuests].filter(Boolean).join(',');
     setIsScanning(true);
     setHasScanned(true);
-    setUnreachableEmails([]); // Reset before scan
+    setUnreachableEmails([]);
+    setRoomAlt([]);
 
     try {
-      const scanUrl = `${GOOGLE_SCRIPT_URL}?emails=${encodeURIComponent(emailsToCheck)}&date=${formDate}&duration=${duration}&mode=scan&ts=${new Date().getTime()}`;
+      // Logic: If room is busy, the script returns ROOM_ALT data
+      const scanUrl = `${GOOGLE_SCRIPT_URL}?emails=${encodeURIComponent(emailsToCheck)}&date=${formDate}&duration=${duration}&time=${formTime || '10:00'}&mode=scan&ts=${new Date().getTime()}`;
       const resp = await fetch(scanUrl);
       const result = await resp.text();
 
-      // Handle Unreachable Calendars
       if (result.includes("UNREACHABLE:")) {
-        const list = result.split("UNREACHABLE:")[1].split(",").filter(Boolean);
+        const list = result.split("UNREACHABLE:")[1].split("|")[0].split(",").filter(Boolean);
         setUnreachableEmails(list);
       }
 
-      // Handle Time Suggestions
       if (result.includes("SUGGESTIONS:")) {
-        const slots = result.split("SUGGESTIONS:")[1].split(",").filter(s => s.trim() !== "");
+        const slots = result.split("SUGGESTIONS:")[1].split("|")[0].split(",").filter(s => s.trim() !== "");
         setSuggestions(slots);
       }
-    } catch (e) { console.error(e); }
+
+      // NEW: Catch Alternative Room Recommendations from Script
+      if (result.includes("ROOM_ALT:")) {
+        const alts = result.split("ROOM_ALT:")[1].split(";").map(str => {
+          const [name, email] = str.split("||");
+          return { name, email };
+        });
+        setRoomAlt(alts);
+      }
+    } catch (e) { console.error("Scan Error:", e); }
     finally { setIsScanning(false); }
   };
 
   const resetForm = () => {
     setSelectedApp(null); setSelectedRoom(''); setSelectedGuests([]); setDuration(60);
     setStep(1); setBypassConflict(false); setSuggestions([]); setFormTime('');
-    setHasScanned(false); setUnreachableEmails([]); setFormDate(format(new Date(), 'yyyy-MM-dd'));
+    setHasScanned(false); setUnreachableEmails([]); setRoomAlt([]); setFormDate(format(new Date(), 'yyyy-MM-dd'));
   };
 
-  // --- DELETE FEATURE ---
   const handleDelete = async () => {
     if (!selectedApp) return;
     if (!window.confirm(`PERMANENTLY DELETE interview for ${selectedApp.name}?`)) return;
@@ -163,19 +181,17 @@ export default function CalendarView() {
         <div className="fixed inset-0 bg-black/90 z-[100] flex items-center justify-center p-6 backdrop-blur-sm">
           <div className="bg-white border-8 border-black w-full max-w-4xl max-h-[95vh] overflow-y-auto p-10 shadow-[25px_25px_0_0_#000]">
             
-            {/* PROGRESS + DELETE HEADER */}
             <div className="flex justify-between items-center mb-8 border-b-4 border-black pb-4">
                 <div className="flex gap-2 w-1/2">
                     {[1, 2, 3].map(i => <div key={i} className={`h-3 flex-1 border-2 border-black ${step >= i ? 'bg-blue-600' : 'bg-slate-200'}`} />)}
                 </div>
                 <div className="flex items-center gap-4">
-                    {selectedApp && <button onClick={handleDelete} className="bg-rose-600 text-white p-2 px-4 border-2 border-black font-black text-[10px] uppercase shadow-[3px_3px_0_0_#000] hover:bg-black">Delete Interview</button>}
+                    {selectedApp && <button onClick={handleDelete} className="bg-rose-600 text-white p-2 border-2 border-black font-black text-[10px] uppercase shadow-[3px_3px_0_0_#000] hover:bg-black">Delete Interview</button>}
                     <button onClick={() => setShowModal(false)} className="text-4xl font-black hover:rotate-90 transition-transform">✕</button>
                 </div>
             </div>
 
             <div className="space-y-8">
-              {/* --- STEP 1: CANDIDATE --- */}
               {step === 1 && (
                 <div className="space-y-6">
                   <h2 className="text-4xl font-black italic uppercase leading-none">1. Choose Candidate</h2>
@@ -187,15 +203,33 @@ export default function CalendarView() {
                 </div>
               )}
 
-              {/* --- STEP 2: LOGISTICS + SCAN --- */}
               {step === 2 && (
                 <div className="space-y-6">
                   <h2 className="text-4xl font-black italic uppercase tracking-tighter leading-none">2. Logistics & Scanning</h2>
                   
+                  {/* ROOM RECOMMENDATION ALERT */}
+                  {hasScanned && roomAlt.length > 0 && selectedRoom && !suggestions.includes(formTime) && (
+                    <div className="p-4 bg-rose-600 border-4 border-black shadow-[6px_6px_0_0_#000] text-white animate-pulse">
+                      <p className="font-black uppercase text-xs">⚠️ Room Conflict Detected!</p>
+                      <p className="text-[10px] font-bold opacity-80 mb-3">"{MEETING_ROOMS.find(r => r.email === selectedRoom)?.name}" is busy. These rooms are free at {formTime || "selected time"}:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {roomAlt.map(alt => (
+                          <button 
+                            key={alt.email}
+                            onClick={() => { setSelectedRoom(alt.email); handleManualScan(); }}
+                            className="bg-white text-rose-600 px-3 py-1 border-2 border-black font-black text-[10px] hover:bg-yellow-300 transition-all"
+                          >
+                            Use {alt.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-2 gap-6">
                     <div className="space-y-4">
                       <div className="p-4 bg-yellow-300 border-4 border-black">
-                        <label className="font-black text-[10px] uppercase italic">Interview Date {isWeekend(new Date(formDate)) && "⚠️ WEEKEND"}</label>
+                        <label className="font-black text-[10px] uppercase italic">Date {isWeekend(new Date(formDate)) && "⚠️ WEEKEND"}</label>
                         <input type="date" value={formDate} onChange={e => setFormDate(e.target.value)} className="w-full p-2 border-2 border-black font-black bg-white mt-1 outline-none" />
                       </div>
                       <div className="p-4 bg-emerald-100 border-4 border-black">
@@ -207,7 +241,7 @@ export default function CalendarView() {
                       </div>
                       <div className="p-4 bg-white border-4 border-black">
                         <label className="font-black text-[10px] uppercase italic">Meeting Room</label>
-                        <select className="w-full p-2 border-2 border-black font-black mt-1 bg-white" value={selectedRoom} onChange={e => setSelectedRoom(e.target.value)}>
+                        <select className="w-full p-2 border-2 border-black font-black mt-1 bg-white outline-none" value={selectedRoom} onChange={e => setSelectedRoom(e.target.value)}>
                             <option value="">Virtual (Zoom/Google Meet)</option>
                             {MEETING_ROOMS.map(r => <option key={r.email} value={r.email}>{r.name}</option>)}
                         </select>
@@ -221,27 +255,28 @@ export default function CalendarView() {
                             const isUnreachable = unreachableEmails.includes(m.email);
                             return (
                               <button key={m.email} onClick={() => setSelectedGuests(prev => prev.includes(m.email) ? prev.filter(x => x !== m.email) : [...prev, m.email])}
-                                  className={`p-2 border-2 border-black font-black text-[10px] uppercase transition-all flex justify-between items-center ${selectedGuests.includes(m.email) ? 'bg-blue-600 text-white translate-y-1 shadow-none' : 'bg-white shadow-[3px_3px_0_0_#000]'} ${isUnreachable ? 'bg-amber-100 border-amber-500 text-amber-700 italic' : ''}`}>
+                                  className={`p-2 border-2 border-black font-black text-[10px] uppercase transition-all flex justify-between items-center ${selectedGuests.includes(m.email) ? 'bg-blue-600 text-white translate-y-1 shadow-none' : 'bg-white shadow-[2px_2px_0_0_#000]'} ${isUnreachable ? 'bg-amber-100 border-amber-500 text-amber-700 italic' : ''}`}>
                                   <span>{m.name}</span>
                                   {isUnreachable && <span className="text-[8px] bg-amber-500 text-white px-1 ml-1 font-black">PRIVATE</span>}
                               </button>
-                            )
+                            );
                           })}
                       </div>
+                      {unreachableEmails.length > 0 && (
+                        <p className="text-[9px] text-amber-600 font-bold p-2 bg-amber-50 border-2 border-amber-200 uppercase leading-tight italic">⚠️ Private Calendars Detected.</p>
+                      )}
                     </div>
                   </div>
 
-                  {/* SCANNING AREA */}
                   <div className="p-6 border-4 border-black bg-blue-50 shadow-[6px_6px_0_0_#000] min-h-[220px]">
                     {!hasScanned ? (
                       <div className="flex flex-col items-center justify-center py-10">
                         <button disabled={!selectedRoom && selectedGuests.length === 0} onClick={handleManualScan} className="bg-blue-600 text-white font-black p-5 px-12 border-4 border-black shadow-[4px_4px_0_0_#000] hover:bg-black uppercase italic tracking-widest disabled:opacity-30">Generate Available Slots</button>
-                        <p className="text-[10px] font-black uppercase mt-4 opacity-40 text-center leading-tight">Pick Logistics & Team Panel First <br/> (Checks 10am-7pm Window)</p>
                       </div>
                     ) : isScanning ? (
                       <div className="flex flex-col items-center justify-center py-10">
                         <div className="w-10 h-10 border-8 border-black border-t-blue-600 animate-spin mb-4"></div>
-                        <p className="font-black text-xs animate-pulse tracking-widest uppercase italic">Pinging Google Calendars...</p>
+                        <p className="font-black text-xs animate-pulse tracking-widest uppercase italic">Checking Google...</p>
                       </div>
                     ) : (
                       <div className="space-y-4">
@@ -252,7 +287,7 @@ export default function CalendarView() {
                         {suggestions.length > 0 ? (
                           <div className="grid grid-cols-5 gap-2">
                             {suggestions.map(t => (
-                              <button key={t} onClick={() => {setFormTime(t); setBypassConflict(false);}} className={`p-2 border-2 border-black font-black text-[10px] transition-all ${formTime === t ? 'bg-emerald-500 text-white translate-y-1 shadow-none' : 'bg-white shadow-[3px_3px_0_0_#000] hover:bg-yellow-100'}`}>
+                              <button key={t} onClick={() => {setFormTime(t); setBypassConflict(false);}} className={`p-2 border-2 border-black font-black text-[10px] transition-all ${formTime === t ? 'bg-emerald-500 text-white translate-y-1 shadow-none' : 'bg-white shadow-[2px_2px_0_0_#000] hover:bg-yellow-100'}`}>
                                 {format(parse(t, 'HH:mm', new Date()), 'hh:mm a')}
                               </button>
                             ))}
@@ -267,52 +302,50 @@ export default function CalendarView() {
                   <div className="p-4 border-4 border-black bg-slate-100 flex items-center justify-between">
                     <label className="flex items-center gap-3 cursor-pointer">
                         <input type="checkbox" checked={bypassConflict} onChange={e => setBypassConflict(e.target.checked)} className="w-6 h-6 border-4 border-black bg-white appearance-none checked:bg-rose-600 cursor-pointer" />
-                        <span className="font-black text-xs uppercase italic tracking-tighter">Bypass Scheduling Conflicts (Manual Force)</span>
+                        <span className="font-black text-xs uppercase italic tracking-tighter">Bypass Conflicts (Manual Force)</span>
                     </label>
                     {bypassConflict && (
                         <input type="time" value={formTime} onChange={e => setFormTime(e.target.value)} className="p-2 border-2 border-black font-black bg-white outline-none shadow-inner" />
                     )}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <button onClick={() => setStep(1)} className="p-4 border-4 border-black font-black uppercase hover:bg-slate-100">Back</button>
+                  <div className="grid grid-cols-2 gap-4 pt-4">
+                    <button onClick={() => setStep(1)} className="p-4 border-4 border-black font-black uppercase hover:bg-slate-100 transition-all">Back</button>
                     <button disabled={!formTime} onClick={() => setStep(3)} className="p-4 bg-black text-white font-black uppercase shadow-[6px_6px_0_0_#000] active:translate-y-1 transition-all">Next: Final Confirmation →</button>
                   </div>
                 </div>
               )}
 
-              {/* --- STEP 3: FINALIZE --- */}
               {step === 3 && (
-                <div className="space-y-6">
+                <div className="space-y-6 text-left">
                   <h2 className="text-4xl font-black italic uppercase tracking-tighter leading-none border-b-4 border-black pb-4">3. Final Review</h2>
-                  
-                  <div className="bg-slate-900 text-white p-8 border-4 border-black shadow-[10px_10px_0_0_#000] space-y-6 text-left">
+                  <div className="bg-slate-900 text-white p-8 border-4 border-black shadow-[10px_10px_0_0_#000] space-y-6">
                       <div className="border-b border-white/20 pb-4">
-                        <p className="text-[10px] uppercase font-black opacity-40 mb-1 tracking-widest">Candidate</p>
+                        <p className="text-[10px] uppercase font-black opacity-40 mb-1 tracking-widest leading-none">Candidate</p>
                         <h3 className="font-black text-4xl uppercase tracking-tighter leading-none">{selectedApp?.name}</h3>
                       </div>
                       <div className="grid grid-cols-2 gap-10">
                         <div>
-                          <p className="text-[10px] uppercase font-black opacity-40 mb-1 tracking-widest">Date & Time</p>
-                          <p className="font-black text-xl">{formDate}</p>
-                          <p className="font-black text-3xl text-emerald-400 uppercase leading-none mt-1">{formTime ? format(parse(formTime, 'HH:mm', new Date()), 'hh:mm a') : 'MANUAL'}</p>
+                          <p className="text-[10px] uppercase font-black opacity-40 mb-1 tracking-widest leading-none">Schedule</p>
+                          <p className="font-black text-xl leading-none">{formDate}</p>
+                          <p className="font-black text-3xl text-emerald-400 mt-1 uppercase leading-none">{formTime ? format(parse(formTime, 'HH:mm', new Date()), 'hh:mm a') : 'MANUAL'}</p>
                         </div>
                         <div>
-                          <p className="text-[10px] uppercase font-black opacity-40 mb-1 tracking-widest">Logistics</p>
+                          <p className="text-[10px] uppercase font-black opacity-40 mb-1 tracking-widest leading-none">Logistics</p>
                           <p className="font-black text-sm uppercase leading-tight">{MEETING_ROOMS.find(r => r.email === selectedRoom)?.name || 'Online'}</p>
-                          <p className="font-black text-[10px] uppercase opacity-60 mt-1">{duration} Minute Interview</p>
+                          <p className="font-black text-xs uppercase opacity-60 mt-2 italic tracking-tighter">Duration: {duration} Mins</p>
                         </div>
                       </div>
                   </div>
 
                   <div className="space-y-1">
-                    <p className="text-[9px] font-black uppercase italic ml-2 opacity-50">Email CC (Janice, etc.)</p>
+                    <p className="text-[9px] font-black uppercase italic ml-2 opacity-50 tracking-tighter">Email CC (Janice, etc.)</p>
                     <input type="text" value={customGuest} onChange={e => setCustomGuest(e.target.value)} className="w-full p-5 border-4 border-black font-black outline-none bg-white shadow-inner" placeholder="janice.sia@geniebook.com" />
                   </div>
 
                   <div className="grid grid-cols-2 gap-4 pt-4">
                     <button onClick={() => setStep(2)} className="p-5 border-4 border-black font-black uppercase hover:bg-slate-50 transition-all">← Back</button>
-                    <button disabled={isSyncing} onClick={handleSave} className={`p-5 font-black uppercase border-4 border-black shadow-[8px_8px_0_0_#000] active:translate-y-1 transition-all ${isSyncing ? 'bg-slate-200 text-slate-400' : 'bg-emerald-500 text-white hover:bg-black hover:text-emerald-500 underline'}`}>
+                    <button disabled={isSyncing} onClick={handleSave} className={`p-5 font-black uppercase border-4 border-black shadow-[8px_8px_0_0_#000] active:translate-y-1 transition-all ${isSyncing ? 'bg-slate-200 text-slate-400' : 'bg-emerald-500 text-white hover:bg-black hover:text-emerald-500 underline decoration-white'}`}>
                         {isSyncing ? 'Synchronizing...' : 'Finalize & Sync'}
                     </button>
                   </div>
