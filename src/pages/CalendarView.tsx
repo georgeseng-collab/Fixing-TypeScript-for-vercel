@@ -9,7 +9,7 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 const locales = { 'en-US': enUS };
 const localizer = dateFnsLocalizer({ format, parse, startOfWeek, getDay, locales });
 
-const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzmaaRbdDZmbeOshThQDQHvWd2sR3NJGhVFWC8nBKZwb0VBHkBtXQyXPQ_kYJdnVJXg/exec';
+const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbySlwyA0acWsgJJTIZxc3L4i2M8oRE7YDkL50B1vopcgEo0FbUZZbVE7ArYivxm04qG/exec';
 
 export default function CalendarView() {
   const [events, setEvents] = useState([]);
