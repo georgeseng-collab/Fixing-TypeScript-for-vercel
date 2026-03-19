@@ -47,13 +47,12 @@ export default function CalendarView() {
   const [suggestions, setSuggestions] = useState([]); 
   const [unreachableEmails, setUnreachableEmails] = useState([]); 
   const [roomAlt, setRoomAlt] = useState([]); 
-  const [busyPeople, setBusyPeople] = useState([]); // Specifically for Personnel Conflicts
+  const [busyPeople, setBusyPeople] = useState([]); 
   const [isScanning, setIsScanning] = useState(false);
   const [hasScanned, setHasScanned] = useState(false);
 
   useEffect(() => { fetchData(); }, []);
 
-  // Reset states on param change
   useEffect(() => {
     setHasScanned(false);
     setSuggestions([]);
@@ -100,10 +99,10 @@ export default function CalendarView() {
       }
 
       if (result.includes("SUGGESTIONS:")) {
-        setSuggestions(result.split("SUGGESTIONS:")[1].split("|")[0].split(",").filter(s => s.trim() !== ""));
+        const slots = result.split("SUGGESTIONS:")[1].split("|")[0].split(",").filter(s => s.trim() !== "");
+        setSuggestions(slots);
       }
 
-      // PERSONNEL CONFLICT DIAGNOSTIC
       if (result.includes("BUSY_PEOPLE:")) {
         const list = result.split("BUSY_PEOPLE:")[1].split("|")[0].split(",").filter(Boolean);
         setBusyPeople(list);
@@ -144,15 +143,23 @@ export default function CalendarView() {
     setIsSyncing(true);
     try {
       const allGuests = [...selectedGuests, ...(customGuest ? customGuest.split(',').map(e => e.trim()) : [])].join(',');
+      
+      // LOGIC: Passing selectedApp.resume_base64 to Google Script
       await fetch(GOOGLE_SCRIPT_URL, {
         method: 'POST', mode: 'no-cors', 
         body: JSON.stringify({
-          name: selectedApp.name, role: selectedApp.job_role, date: formDate, time: formTime,
-          guests: allGuests, roomEmail: selectedRoom, duration: duration,
+          name: selectedApp.name, 
+          role: selectedApp.job_role, 
+          date: formDate, 
+          time: formTime,
+          guests: allGuests, 
+          roomEmail: selectedRoom, 
+          duration: duration,
           roomName: MEETING_ROOMS.find(r => r.email === selectedRoom)?.name || 'Online',
-          fileBase64: "" 
+          fileBase64: selectedApp.resume_base64 || "" // Syncing actual resume
         })
       });
+
       const ts = `${formDate}T${formTime}:00+08:00`;
       let history = [...(selectedApp.status_history || []), { status: 'Interview Scheduled', date: ts, isManual: true }];
       await supabase.from('applicants').update({ status_history: history }).eq('id', selectedApp.id);
@@ -215,6 +222,14 @@ export default function CalendarView() {
                     <option value="">-- Select Candidate --</option>
                     {applicants.map(a => <option key={a.id} value={a.id}>{a.name} ({a.job_role})</option>)}
                   </select>
+                  
+                  {/* RESUME INDICATOR */}
+                  {selectedApp && (
+                    <div className={`p-4 border-2 border-black rounded-xl font-black text-xs uppercase italic flex items-center gap-3 ${selectedApp.resume_base64 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                        <span>{selectedApp.resume_base64 ? '✓ Resume Attached' : '⚠️ No Resume Found in ATS'}</span>
+                    </div>
+                  )}
+
                   <button disabled={!selectedApp} onClick={() => setStep(2)} className="w-full p-6 bg-black text-white font-black uppercase shadow-[8px_8px_0_0_#000] hover:bg-blue-600 transition-all rounded-2xl">Continue →</button>
                 </div>
               )}
