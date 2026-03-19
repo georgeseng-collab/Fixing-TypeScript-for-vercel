@@ -9,7 +9,6 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 const locales = { 'en-US': enUS };
 const localizer = dateFnsLocalizer({ format, parse, startOfWeek, getDay, locales });
 
-// --- LATEST SCRIPT URL ---
 const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyBzu5QfSOF0P-P5vaQYAZk9vgM2r92pfoNKJXTvakQxYpvisRa6GlnAIcjtZvUgqNw/exec';
 
 const MEETING_ROOMS = [
@@ -30,15 +29,12 @@ export default function CalendarView() {
   const [showModal, setShowModal] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   
-  // WIZARD CONTROL
   const [step, setStep] = useState(1);
   const [bypassConflict, setBypassConflict] = useState(false);
   const [duration, setDuration] = useState(60); 
 
-  // SEARCH & FILTERING
   const [searchTerm, setSearchTerm] = useState('');
 
-  // FORM DATA
   const [selectedApp, setSelectedApp] = useState(null);
   const [selectedRoom, setSelectedRoom] = useState(''); 
   const [selectedGuests, setSelectedGuests] = useState([]);
@@ -46,7 +42,6 @@ export default function CalendarView() {
   const [formDate, setFormDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [formTime, setFormTime] = useState('');
 
-  // SCANNING & DIAGNOSTIC DATA
   const [suggestions, setSuggestions] = useState([]); 
   const [unreachableEmails, setUnreachableEmails] = useState([]); 
   const [roomAlt, setRoomAlt] = useState([]); 
@@ -66,7 +61,6 @@ export default function CalendarView() {
       const { data: apps } = await supabase.from('applicants').select('*');
       const { data: team } = await supabase.from('team_members').select('*');
       
-      // Feature: Filter only for candidates in the active pipeline
       const activePipeline = (apps || []).filter(a => 
         !['Hired', 'Rejected', 'Withdrawn', 'Onboarding'].includes(a.status)
       );
@@ -89,8 +83,7 @@ export default function CalendarView() {
     } finally { setLoading(false); }
   };
 
-  // --- PREMIUM CALENDAR STYLING ---
-  const eventStyleGetter = (event) => ({
+  const eventStyleGetter = () => ({
     style: {
       backgroundColor: '#0f172a', borderRadius: '8px', color: 'white', border: 'none',
       borderLeft: '5px solid #3b82f6', boxShadow: '4px 4px 0px 0px rgba(0,0,0,1)',
@@ -105,7 +98,6 @@ export default function CalendarView() {
     </div>
   );
 
-  // SEARCH LOGIC
   const filteredApplicants = applicants.filter(a => 
     a.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     a.job_role.toLowerCase().includes(searchTerm.toLowerCase())
@@ -179,14 +171,25 @@ export default function CalendarView() {
 
   const handleDelete = async () => {
     if (!selectedApp) return;
-    if (!window.confirm(`DELETE interview for ${selectedApp.name}?`)) return;
+    if (!window.confirm(`⚠️ PERMANENTLY DELETE interview for ${selectedApp.name} from the ATS?`)) return;
     setIsSyncing(true);
     try {
+      // Find the specific entry in history based on the stored time
       const targetDate = `${formDate}T${formTime}:00+08:00`;
       const newHistory = (selectedApp.status_history || []).filter(h => h.date !== targetDate);
-      await supabase.from('applicants').update({ status_history: newHistory }).eq('id', selectedApp.id);
-      setShowModal(false); resetForm(); fetchData();
-    } finally { setIsSyncing(false); }
+      
+      await supabase.from('applicants')
+        .update({ status_history: newHistory })
+        .eq('id', selectedApp.id);
+        
+      setShowModal(false); 
+      resetForm(); 
+      fetchData();
+    } catch (err) {
+      console.error("Delete Error:", err);
+    } finally { 
+      setIsSyncing(false); // Fixed: should be false
+    }
   };
 
   return (
@@ -229,8 +232,6 @@ export default function CalendarView() {
               {step === 1 && (
                 <div className="space-y-6">
                   <h2 className="text-4xl font-black italic uppercase leading-none">1. Find Candidate</h2>
-                  
-                  {/* SEARCH & FILTER SECTION */}
                   <div className="space-y-4">
                     <div className="relative">
                        <input 
@@ -253,10 +254,6 @@ export default function CalendarView() {
                         <option key={a.id} value={a.id}>{a.name} • [{a.status}]</option>
                       ))}
                     </select>
-
-                    {filteredApplicants.length === 0 && searchTerm && (
-                      <p className="text-rose-600 font-black uppercase text-xs">No active candidates match "{searchTerm}"</p>
-                    )}
                   </div>
                   
                   {selectedApp && (
@@ -273,7 +270,6 @@ export default function CalendarView() {
                 <div className="space-y-6">
                   <h2 className="text-4xl font-black italic uppercase tracking-tighter leading-none">2. Logistics & Scanning</h2>
                   
-                  {/* --- SILENT CONFLICT LOGIC: ONLY SHOW IF NO SLOTS FOUND --- */}
                   {hasScanned && suggestions.length === 0 && (
                     <div className="space-y-3">
                       {busyPeople.length > 0 && (
@@ -358,6 +354,17 @@ export default function CalendarView() {
               {step === 3 && (
                 <div className="space-y-6 text-black">
                   <h2 className="text-4xl font-black italic uppercase tracking-tighter leading-none border-b-4 border-black pb-4">3. Final Review</h2>
+                  
+                  {/* --- DELETE BUTTON Restored Here --- */}
+                  <div className="flex justify-end -mb-4">
+                     <button 
+                        onClick={handleDelete}
+                        className="bg-rose-100 text-rose-600 border-2 border-rose-600 px-4 py-1.5 rounded-xl font-black text-[10px] uppercase italic hover:bg-rose-600 hover:text-white transition-all shadow-[2px_2px_0_0_#e11d48]"
+                     >
+                        🗑️ Delete This Interview
+                     </button>
+                  </div>
+
                   <div className="bg-slate-900 text-white p-10 border-4 border-black rounded-[2.5rem] shadow-[12px_12px_0_0_#000] space-y-8 relative overflow-hidden">
                       <div className="absolute top-0 right-0 p-10 opacity-10 font-black text-8xl italic uppercase">ATS</div>
                       <div className="relative z-10 text-left">
@@ -371,7 +378,9 @@ export default function CalendarView() {
                         </div>
                       </div>
                   </div>
+                  
                   <input type="text" value={customGuest} onChange={e => setCustomGuest(e.target.value)} className="w-full p-5 border-4 border-black font-black outline-none bg-white rounded-2xl shadow-inner text-lg" placeholder="Email CC (Janice etc.)" />
+                  
                   <div className="grid grid-cols-2 gap-4">
                     <button onClick={() => setStep(2)} className="p-5 border-4 border-black font-black uppercase hover:bg-slate-50 transition-all rounded-2xl italic">← Modify</button>
                     <button disabled={isSyncing} onClick={handleSave} className={`p-5 font-black uppercase border-4 border-black shadow-[8px_8px_0_0_#000] active:translate-y-1 transition-all rounded-2xl ${isSyncing ? 'bg-slate-200 text-slate-400 animate-pulse' : 'bg-emerald-500 text-white hover:bg-black underline'}`}>Finalize & Sync</button>
