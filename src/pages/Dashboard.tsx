@@ -25,6 +25,7 @@ export default function Dashboard() {
   const [modalType, setModalType] = useState(''); 
   const [formData, setFormData] = useState({ status: '', remarks: '', date: '', offered_salary: '' });
 
+  const ARCHIVE_STATUSES = ['KIV', 'Resigned', 'Blacklisted', 'Failed Interview', 'Rejected Offer'];
   const stages = ['Applied', 'Interviewing', 'Offered', 'Offer Accepted', 'Hired'];
 
   const fetchData = async () => {
@@ -46,6 +47,19 @@ export default function Dashboard() {
   };
 
   useEffect(() => { fetchData(); }, []);
+
+  // --- ANALYTICS CALCULATIONS ---
+  const funnelData = {
+    applied: applicants.length,
+    active: applicants.filter(a => !ARCHIVE_STATUSES.includes(a.status) && a.status !== 'Hired').length,
+    hired: applicants.filter(a => a.status === 'Hired').length
+  };
+
+  const sourceCounts = applicants.reduce((acc, app) => {
+    const src = app.source || 'Direct';
+    acc[src] = (acc[src] || 0) + 1;
+    return acc;
+  }, {});
 
   const updateStatus = async (id, status, remarks, date, offered_salary, isReset = false) => {
     try {
@@ -86,13 +100,9 @@ export default function Dashboard() {
       setModalType('offer');
       setFormData({ status: newStatus, remarks: '', date: '', offered_salary: app.offered_salary || '' });
       setShowStatusModal(true);
-    } else if (['Blacklisted', 'Rejected Offer', 'Failed Interview'].includes(newStatus)) {
+    } else if (ARCHIVE_STATUSES.includes(newStatus)) {
       setModalType('remarks');
-      setFormData({ status: newStatus, remarks: '', date: '', offered_salary: '' });
-      setShowStatusModal(true);
-    } else if (newStatus === 'Resigned') {
-      setModalType('resigned');
-      setFormData({ status: newStatus, remarks: '', date: today, offered_salary: '' });
+      setFormData({ status: newStatus, remarks: '', date: (newStatus === 'Resigned' ? today : ''), offered_salary: '' });
       setShowStatusModal(true);
     } else {
       updateStatus(app.id, newStatus, '', '', '');
@@ -125,19 +135,20 @@ export default function Dashboard() {
       'Resigned': 'bg-orange-700 text-white',
       'Blacklisted': 'bg-slate-900 text-white',
       'Failed Interview': 'bg-slate-500 text-white',
-      'Rejected Offer': 'bg-rose-500 text-white'
+      'Rejected Offer': 'bg-rose-500 text-white',
+      'KIV': 'bg-teal-600 text-white'
     };
     return themes[status] || 'bg-slate-400 text-white';
   };
 
   const stats = {
-    All: applicants.filter(a => !['Blacklisted', 'Resigned', 'Failed Interview', 'Rejected Offer'].includes(a.status)).length,
+    All: applicants.filter(a => !ARCHIVE_STATUSES.includes(a.status)).length,
     Applied: applicants.filter(a => a.status === 'Applied').length,
     Interviewing: applicants.filter(a => a.status === 'Interviewing').length,
     Offered: applicants.filter(a => a.status === 'Offered').length,
     'Offer Accepted': applicants.filter(a => a.status === 'Offer Accepted').length,
     Hired: applicants.filter(a => a.status === 'Hired').length,
-    'Archive': applicants.filter(a => ['Failed Interview', 'Blacklisted', 'Resigned', 'Rejected Offer'].includes(a.status)).length,
+    'Archive': applicants.filter(a => ARCHIVE_STATUSES.includes(a.status)).length,
   };
 
   const filtered = applicants.filter(a => {
@@ -149,7 +160,7 @@ export default function Dashboard() {
       (a.phone || "").includes(s);
 
     const matchesOwnership = viewType === 'All' || a.created_by === currentUser?.id;
-    const isArchived = ['Failed Interview', 'Blacklisted', 'Resigned', 'Rejected Offer'].includes(a.status);
+    const isArchived = ARCHIVE_STATUSES.includes(a.status);
     
     if (filterStatus === 'Archive') return matchesSearch && matchesOwnership && isArchived;
     if (filterStatus === 'All') return matchesSearch && matchesOwnership && !isArchived;
@@ -159,12 +170,52 @@ export default function Dashboard() {
   return (
     <div className="max-w-7xl mx-auto px-6 py-12 space-y-8 pb-32 relative text-slate-900 font-sans">
       
+      {/* 📊 ANALYTICS HUB */}
+      <section className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
+        {/* Source Tracking Card */}
+        <div className="bg-white border-4 border-slate-900 rounded-[3rem] p-8 shadow-[12px_12px_0px_0px_rgba(0,0,0,1)]">
+           <h3 className="text-xl font-black uppercase italic mb-6">📍 Lead Sources</h3>
+           <div className="space-y-4 max-h-[180px] overflow-y-auto pr-2 no-scrollbar">
+              {Object.entries(sourceCounts).map(([source, count], i) => (
+                <div key={i} className="space-y-1">
+                  <div className="flex justify-between text-[10px] font-black uppercase">
+                    <span>{source}</span>
+                    <span>{Math.round((count / applicants.length) * 100)}%</span>
+                  </div>
+                  <div className="w-full bg-slate-100 h-2 rounded-full border border-slate-900 overflow-hidden">
+                    <div className="bg-blue-600 h-full" style={{ width: `${(count / applicants.length) * 100}%` }} />
+                  </div>
+                </div>
+              ))}
+           </div>
+        </div>
+
+        {/* Funnel Visual */}
+        <div className="lg:col-span-2 bg-slate-900 rounded-[3rem] p-8 border-4 border-slate-900 shadow-[12px_12px_0px_0px_rgba(59,130,246,1)] text-white">
+          <h3 className="text-xl font-black uppercase italic mb-6 flex justify-between items-center">Recruitment Funnel <span className="text-[10px] bg-blue-500 px-3 py-1 rounded-full not-italic">LIVE</span></h3>
+          <div className="grid grid-cols-3 gap-4">
+             <div className="bg-white/5 p-6 rounded-3xl border border-white/10 text-center">
+                <p className="text-[10px] font-bold uppercase opacity-40 mb-2">Total Apps</p>
+                <p className="text-5xl font-black italic">{funnelData.applied}</p>
+             </div>
+             <div className="bg-white/5 p-6 rounded-3xl border border-white/10 text-center">
+                <p className="text-[10px] font-bold uppercase opacity-40 mb-2">In Pipeline</p>
+                <p className="text-5xl font-black italic text-amber-400">{funnelData.active}</p>
+             </div>
+             <div className="bg-white/5 p-6 rounded-3xl border border-white/10 text-center">
+                <p className="text-[10px] font-bold uppercase opacity-40 mb-2">Hired</p>
+                <p className="text-5xl font-black italic text-emerald-400">{funnelData.hired}</p>
+             </div>
+          </div>
+        </div>
+      </section>
+
       {/* MODALS SECTION */}
       {showStatusModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-4">
           <div className="bg-white border-8 border-slate-900 w-full max-w-lg rounded-[3rem] shadow-[20px_20px_0px_0px_rgba(0,0,0,1)] p-10 space-y-6">
             <h2 className="text-4xl font-black uppercase italic tracking-tighter">
-               {modalType === 'offer' ? '💸 Salary Offer' : 'Status Update'}
+               {modalType === 'offer' ? '💸 Salary Offer' : `Log ${formData.status}`}
             </h2>
             <div className="space-y-4">
               {modalType === 'offer' && (
@@ -216,8 +267,8 @@ export default function Dashboard() {
 
       {/* HEADER SECTION */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b-8 border-slate-900 pb-8">
-        <div className="space-y-4">
-           <h1 className="text-7xl font-black text-slate-900 tracking-tighter italic uppercase leading-none">Dashboard</h1>
+        <div className="space-y-4 text-left">
+           <h1 className="text-7xl font-black text-slate-900 tracking-tighter italic uppercase leading-none">Management</h1>
            <div className="flex gap-2">
               <button onClick={() => setViewType('All')} className={`px-6 py-2 rounded-full border-4 border-slate-900 font-black text-[10px] uppercase transition-all ${viewType === 'All' ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-900 hover:bg-slate-100'}`}>🌍 Team's View</button>
               <button onClick={() => setViewType('Mine')} className={`px-6 py-2 rounded-full border-4 border-slate-900 font-black text-[10px] uppercase transition-all ${viewType === 'Mine' ? 'bg-blue-600 text-white shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]' : 'bg-white text-slate-900 hover:bg-blue-50'}`}>👤 My Candidates</button>
@@ -243,10 +294,10 @@ export default function Dashboard() {
       </div>
 
       {/* APPLICANT GRID */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12 text-left">
         {filtered.map(app => {
           const isReady = offerHistory.includes(app.id) && approvalHistory.includes(app.id) && app.contract_generated;
-          const isArchived = ['Failed Interview', 'Blacklisted', 'Resigned', 'Rejected Offer'].includes(app.status);
+          const isArchived = ARCHIVE_STATUSES.includes(app.status);
 
           return (
             <div key={app.id} className="bg-white rounded-[4rem] border-4 border-slate-900 shadow-[14px_14px_0px_0px_rgba(15,23,42,1)] overflow-hidden flex flex-col transition-all hover:-translate-y-2">
@@ -270,14 +321,19 @@ export default function Dashboard() {
                       </>
                     )}
                   </div>
-                  {/* RECRUITER TAG */}
-                  <div className="mt-4 text-[9px] font-black uppercase bg-black/10 inline-flex items-center gap-2 px-3 py-1 rounded-full">
-                    👤 {app.creator_email === currentUser?.email ? 'Me' : (app.creator_email || 'System')}
+                  {/* RECRUITER & SOURCE TAGS */}
+                  <div className="flex gap-2 flex-wrap mt-4">
+                    <div className="text-[9px] font-black uppercase bg-black/10 inline-flex items-center px-3 py-1 rounded-full">
+                      👤 {app.creator_email === currentUser?.email ? 'Me' : (app.creator_email || 'System')}
+                    </div>
+                    <div className="text-[9px] font-black uppercase bg-black/10 inline-flex items-center px-3 py-1 rounded-full">
+                      📍 {app.source || 'Direct'}
+                    </div>
                   </div>
               </div>
 
               <div className="p-10 space-y-8 flex-grow">
-                {/* CONTACT INFO */}
+                {/* RESTORED CONTACT INFO */}
                 <div className="space-y-3">
                   {editId === app.id ? (
                     <div className="space-y-2">
@@ -289,7 +345,7 @@ export default function Dashboard() {
                       <div className="flex items-center gap-4 bg-slate-50 p-5 rounded-[1.5rem] text-[11px] font-black text-slate-600 border-2 border-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] uppercase truncate">
                         <span>📧</span> {app.email}
                       </div>
-                      <a href={`https://wa.me/${app.phone?.replace(/[^0-9]/g, '')}`} target="_blank" className="flex items-center gap-4 bg-emerald-50 p-5 rounded-[1.5rem] text-[11px] font-black text-emerald-700 border-2 border-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] uppercase hover:bg-emerald-100 transition-all">
+                      <a href={`https://wa.me/${app.phone?.replace(/[^0-9]/g, '')}`} target="_blank" rel="noreferrer" className="flex items-center gap-4 bg-emerald-50 p-5 rounded-[1.5rem] text-[11px] font-black text-emerald-700 border-2 border-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] uppercase hover:bg-emerald-100 transition-all">
                         <span>📱</span> {app.phone}
                       </a>
                     </>
@@ -301,10 +357,10 @@ export default function Dashboard() {
                   <div className="space-y-6">
                     <div className="bg-slate-900 p-8 rounded-[3.5rem] space-y-5 text-white shadow-inner">
                       {app.status === 'Resigned' && <div className="space-y-1"><span className="text-[9px] font-black text-blue-400 uppercase italic tracking-widest">Resigned On</span><p className="text-sm font-bold text-rose-400 italic">{app.resignation_date || 'N/A'}</p></div>}
-                      <div className="space-y-1"><span className="text-[9px] font-black text-blue-400 uppercase italic tracking-widest">History</span><p className="text-xs italic opacity-80 leading-relaxed line-clamp-3">"{app.remarks || 'No remarks.'}"</p></div>
+                      <div className="space-y-1"><span className="text-[9px] font-black text-blue-400 uppercase italic tracking-widest">Archive Log ({app.status})</span><p className="text-xs italic opacity-80 leading-relaxed line-clamp-3">"{app.remarks || 'No remarks recorded.'}"</p></div>
                     </div>
                     {/* RESET BUTTON */}
-                    <button onClick={() => { if(confirm(`Reset ${app.name} to Applied?`)) updateStatus(app.id, 'Applied', '', '', '', true) }} className="w-full py-6 bg-white text-slate-900 rounded-[2.5rem] border-4 border-slate-900 font-black uppercase text-[11px] tracking-widest shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:bg-blue-600 hover:text-white transition-all">🔄 Reset to Applied</button>
+                    <button onClick={() => { if(confirm(`Reset ${app.name} to Applied?`)) updateStatus(app.id, 'Applied', '', '', '', true) }} className="w-full py-6 bg-white text-slate-900 rounded-[2.5rem] border-4 border-slate-900 font-black uppercase text-[11px] tracking-widest shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:bg-blue-600 hover:text-white transition-all">🔄 Restore to Pipeline</button>
                   </div>
                 ) : (
                   <div className="space-y-6">
@@ -323,14 +379,25 @@ export default function Dashboard() {
                         {app.status === 'Hired' ? (
                           <><option value="Hired">Hired (Onboarded)</option><option value="Offer Accepted">Move Back to Offer</option><option value="Resigned">Resigned</option></>
                         ) : (
-                          <>{stages.map(s => <option key={s} value={s}>{s}</option>)}<optgroup label="Archive"><option value="Failed Interview">Failed Interview</option><option value="Rejected Offer">Rejected Offer</option><option value="Blacklisted">Blacklisted</option></optgroup></>
+                          <>
+                            <optgroup label="Active Process">
+                              {stages.map(s => <option key={s} value={s}>{s}</option>)}
+                            </optgroup>
+                            <optgroup label="Archive / Decision">
+                              <option value="KIV">Keep In View (KIV)</option>
+                              <option value="Failed Interview">Failed Interview</option>
+                              <option value="Rejected Offer">Rejected Offer</option>
+                              <option value="Resigned">Resigned</option>
+                              <option value="Blacklisted">Blacklisted</option>
+                            </optgroup>
+                          </>
                         )}
                       </select>
                     )}
                   </div>
                 )}
 
-                {/* SALARY INFO SECTION */}
+                {/* RESTORED SALARY INFO SECTION */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-slate-50 p-5 rounded-[1.5rem] border-2 border-slate-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-center">
                     <span className="block text-[9px] font-black text-slate-400 uppercase mb-1 italic">Last Drawn</span>
@@ -352,7 +419,7 @@ export default function Dashboard() {
 
                 {/* ACTION ICONS SECTION */}
                 <div className="flex gap-4">
-                  <a href={app.resume_metadata?.url} target="_blank" className="flex-1 flex justify-center items-center bg-white border-4 border-slate-900 py-5 rounded-[2rem] shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:bg-slate-900 hover:text-white transition-all text-2xl">📄</a>
+                  <a href={app.resume_metadata?.url} target="_blank" rel="noreferrer" className="flex-1 flex justify-center items-center bg-white border-4 border-slate-900 py-5 rounded-[2rem] shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:bg-slate-900 hover:text-white transition-all text-2xl">📄</a>
                   <button onClick={() => { setActiveApp(app); setShowHistoryModal(true); }} className="flex-1 flex justify-center items-center bg-slate-50 rounded-[2rem] border-4 border-slate-900 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:bg-blue-500 hover:text-white transition-all text-2xl">🕒</button>
                   <button onClick={() => editId === app.id ? saveEdit() : (setEditId(app.id), setEditData(app))} className={`flex-1 flex justify-center items-center rounded-[2rem] border-4 border-slate-900 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all text-2xl ${editId === app.id ? 'bg-emerald-500 text-white animate-pulse' : 'bg-white text-slate-900 hover:bg-slate-900 hover:text-white'}`}>{editId === app.id ? '✔️' : '✏️'}</button>
                 </div>
