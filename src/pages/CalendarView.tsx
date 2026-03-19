@@ -9,8 +9,8 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 const locales = { 'en-US': enUS };
 const localizer = dateFnsLocalizer({ format, parse, startOfWeek, getDay, locales });
 
-// --- LATEST SCRIPT URL ---
-const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby6fsroZCcCHsKUu-wvzdqZqVtBffyzS89e9GWw90FVEHw3Gh8C8-AUEFqrkKYKueY0/exec';
+// --- UPDATED NEW SCRIPT URL ---
+const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyBzu5QfSOF0P-P5vaQYAZk9vgM2r92pfoNKJXTvakQxYpvisRa6GlnAIcjtZvUgqNw/exec';
 
 const MEETING_ROOMS = [
   { name: 'Germanium (GE)', email: 'c_18887npjdt67ih5lmtfgahccqnne8@resource.calendar.google.com' },
@@ -53,6 +53,7 @@ export default function CalendarView() {
 
   useEffect(() => { fetchData(); }, []);
 
+  // Reset scan results if logistics change
   useEffect(() => {
     setHasScanned(false);
     setSuggestions([]);
@@ -144,6 +145,9 @@ export default function CalendarView() {
     try {
       const allGuests = [...selectedGuests, ...(customGuest ? customGuest.split(',').map(e => e.trim()) : [])].join(',');
       
+      // LOGIC: Ensure we pull from all possible column names
+      const resumeString = selectedApp.resume_base64 || selectedApp.resume || selectedApp.file_data || "";
+
       const payload = {
         name: selectedApp.name,
         role: selectedApp.job_role,
@@ -153,7 +157,7 @@ export default function CalendarView() {
         roomEmail: selectedRoom,
         roomName: MEETING_ROOMS.find(r => r.email === selectedRoom)?.name || 'Online',
         duration: duration,
-        fileBase64: selectedApp.resume_base64 || selectedApp.resume || ""
+        fileBase64: resumeString // PASSING REAL DATA
       };
 
       await fetch(GOOGLE_SCRIPT_URL, {
@@ -219,15 +223,22 @@ export default function CalendarView() {
               {step === 1 && (
                 <div className="space-y-6">
                   <h2 className="text-4xl font-black italic uppercase leading-none">1. Choose Candidate</h2>
-                  <select className="w-full p-5 border-4 border-black font-black bg-white text-xl outline-none rounded-2xl" value={selectedApp?.id || ''} onChange={e => setSelectedApp(applicants.find(a => a.id === e.target.value))}>
+                  <select 
+                    className="w-full p-5 border-4 border-black font-black bg-white text-xl outline-none rounded-2xl" 
+                    value={selectedApp?.id || ''} 
+                    onChange={e => {
+                      const app = applicants.find(a => a.id === e.target.value);
+                      setSelectedApp(app);
+                    }}
+                  >
                     <option value="">-- Select Candidate --</option>
                     {applicants.map(a => <option key={a.id} value={a.id}>{a.name} ({a.job_role})</option>)}
                   </select>
                   
-                  {/* RESUME INDICATOR */}
+                  {/* RESUME INDICATOR - Improved detection logic */}
                   {selectedApp && (
-                    <div className={`p-4 border-2 border-black rounded-xl font-black text-xs uppercase italic flex items-center gap-3 ${(selectedApp.resume_base64 || selectedApp.resume) ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
-                        <span>{(selectedApp.resume_base64 || selectedApp.resume) ? '✓ Resume Attached' : '⚠️ No Resume Found in ATS'}</span>
+                    <div className={`p-4 border-2 border-black rounded-xl font-black text-xs uppercase italic flex items-center gap-3 ${(selectedApp.resume_base64 || selectedApp.resume || selectedApp.file_data) ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                        <span>{(selectedApp.resume_base64 || selectedApp.resume || selectedApp.file_data) ? '✓ Resume Linked' : '⚠️ No Resume string found in ATS'}</span>
                     </div>
                   )}
 
@@ -248,7 +259,6 @@ export default function CalendarView() {
                             The following staff are busy at {formTime || "selected time"}: 
                             <span className="font-black ml-1 uppercase">{busyPeople.map(email => teamMembers.find(t => t.email === email)?.name || email).join(", ")}</span>
                         </p>
-                        <p className="text-[10px] font-black mt-2 text-amber-700 underline italic">Please change date or select a suggested slot below.</p>
                     </div>
                   )}
 
@@ -256,8 +266,7 @@ export default function CalendarView() {
                   {hasScanned && roomAlt.length > 0 && selectedRoom && !suggestions.includes(formTime) && (
                     <div className="p-5 bg-rose-600 border-4 border-black shadow-[6px_6px_0_0_#000] text-white animate-pulse rounded-2xl">
                       <p className="font-black uppercase text-xs">⚠️ Room Conflict Detected!</p>
-                      <p className="text-[10px] font-bold opacity-80 mb-3 uppercase">Selected room is busy. Use these free rooms instead:</p>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-2 mt-2">
                         {roomAlt.map(alt => (
                           <button key={alt.email} onClick={() => { setSelectedRoom(alt.email); handleManualScan(); }} className="bg-white text-rose-600 px-4 py-1.5 rounded-lg border-2 border-black font-black text-[10px] hover:bg-yellow-300 transition-all">Use {alt.name}</button>
                         ))}
