@@ -1,3 +1,7 @@
+console.log("DEBUG - All Env Vars:", import.meta.env);
+console.log("DEBUG - My Key:", import.meta.env.VITE_OPENAI_API_KEY);
+
+
 // @ts-nocheck
 import { useState, useEffect } from 'react';
 import { supabase } from '../db'; 
