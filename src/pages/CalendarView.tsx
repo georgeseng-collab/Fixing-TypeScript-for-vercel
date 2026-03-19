@@ -53,7 +53,6 @@ export default function CalendarView() {
 
   useEffect(() => { fetchData(); }, []);
 
-  // Reset scan results if logistics change
   useEffect(() => {
     setHasScanned(false);
     setSuggestions([]);
@@ -98,17 +97,14 @@ export default function CalendarView() {
       if (result.includes("UNREACHABLE:")) {
         setUnreachableEmails(result.split("UNREACHABLE:")[1].split("|")[0].split(",").filter(Boolean));
       }
-
       if (result.includes("SUGGESTIONS:")) {
         const slots = result.split("SUGGESTIONS:")[1].split("|")[0].split(",").filter(s => s.trim() !== "");
         setSuggestions(slots);
       }
-
       if (result.includes("BUSY_PEOPLE:")) {
         const list = result.split("BUSY_PEOPLE:")[1].split("|")[0].split(",").filter(Boolean);
         setBusyPeople(list);
       }
-
       if (result.includes("ROOM_ALT:")) {
         const alts = result.split("ROOM_ALT:")[1].split(";").map(str => {
           const [name, email] = str.split("||");
@@ -145,19 +141,19 @@ export default function CalendarView() {
     try {
       const allGuests = [...selectedGuests, ...(customGuest ? customGuest.split(',').map(e => e.trim()) : [])].join(',');
       
-      // LOGIC: Ensure we pull from all possible column names
+      // FEATURE: Strict mapping of resume data to ensure Google Drive folder command works
       const resumeString = selectedApp.resume_base64 || selectedApp.resume || selectedApp.file_data || "";
 
       const payload = {
-        name: selectedApp.name,
-        role: selectedApp.job_role,
-        date: formDate,
+        name: selectedApp.name,           // Required for naming format: DATE_NAME_Resume.pdf
+        role: selectedApp.job_role,       // Required for Event Title
+        date: formDate,                   // Required for naming format
         time: formTime,
-        guests: allGuests,
-        roomEmail: selectedRoom,
-        roomName: MEETING_ROOMS.find(r => r.email === selectedRoom)?.name || 'Online',
+        guests: allGuests, 
+        roomEmail: selectedRoom, 
         duration: duration,
-        fileBase64: resumeString // PASSING REAL DATA
+        roomName: MEETING_ROOMS.find(r => r.email === selectedRoom)?.name || 'Online',
+        fileBase64: resumeString          // Syncing actual resume data
       };
 
       await fetch(GOOGLE_SCRIPT_URL, {
@@ -174,6 +170,9 @@ export default function CalendarView() {
       fetchData();
     } finally { setIsSyncing(false); }
   };
+
+  // Internal Helper to check for any resume field variant
+  const getResumeStatus = (app) => (app?.resume_base64 || app?.resume || app?.file_data);
 
   return (
     <div className="p-10 bg-slate-50 min-h-screen font-sans text-slate-900">
@@ -223,22 +222,15 @@ export default function CalendarView() {
               {step === 1 && (
                 <div className="space-y-6">
                   <h2 className="text-4xl font-black italic uppercase leading-none">1. Choose Candidate</h2>
-                  <select 
-                    className="w-full p-5 border-4 border-black font-black bg-white text-xl outline-none rounded-2xl" 
-                    value={selectedApp?.id || ''} 
-                    onChange={e => {
-                      const app = applicants.find(a => a.id === e.target.value);
-                      setSelectedApp(app);
-                    }}
-                  >
+                  <select className="w-full p-5 border-4 border-black font-black bg-white text-xl outline-none rounded-2xl" value={selectedApp?.id || ''} onChange={e => setSelectedApp(applicants.find(a => a.id === e.target.value))}>
                     <option value="">-- Select Candidate --</option>
                     {applicants.map(a => <option key={a.id} value={a.id}>{a.name} ({a.job_role})</option>)}
                   </select>
                   
                   {/* RESUME INDICATOR - Improved detection logic */}
                   {selectedApp && (
-                    <div className={`p-4 border-2 border-black rounded-xl font-black text-xs uppercase italic flex items-center gap-3 ${(selectedApp.resume_base64 || selectedApp.resume || selectedApp.file_data) ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
-                        <span>{(selectedApp.resume_base64 || selectedApp.resume || selectedApp.file_data) ? '✓ Resume Linked' : '⚠️ No Resume string found in ATS'}</span>
+                    <div className={`p-4 border-2 border-black rounded-xl font-black text-xs uppercase italic flex items-center gap-3 ${getResumeStatus(selectedApp) ? 'bg-emerald-50 text-emerald-700 border-emerald-500' : 'bg-rose-50 text-rose-700 border-rose-500'}`}>
+                        <span>{getResumeStatus(selectedApp) ? '✓ Resume string detected for Drive sync' : '⚠️ No Resume found in ATS for this candidate'}</span>
                     </div>
                   )}
 
@@ -251,18 +243,16 @@ export default function CalendarView() {
                 <div className="space-y-6">
                   <h2 className="text-4xl font-black italic uppercase tracking-tighter leading-none">2. Logistics & Scanning</h2>
                   
-                  {/* PERSONNEL CONFLICT WARNING */}
                   {hasScanned && busyPeople.length > 0 && (
                     <div className="p-5 bg-amber-100 border-4 border-amber-500 rounded-2xl shadow-[6px_6px_0_0_#f59e0b]">
                         <p className="font-black uppercase text-xs text-amber-700">⚠️ Personnel Conflict!</p>
                         <p className="text-[10px] font-bold mt-1 text-amber-900 opacity-80">
-                            The following staff are busy at {formTime || "selected time"}: 
+                            The following staff are busy: 
                             <span className="font-black ml-1 uppercase">{busyPeople.map(email => teamMembers.find(t => t.email === email)?.name || email).join(", ")}</span>
                         </p>
                     </div>
                   )}
 
-                  {/* ROOM RECOMMENDATION ALERT */}
                   {hasScanned && roomAlt.length > 0 && selectedRoom && !suggestions.includes(formTime) && (
                     <div className="p-5 bg-rose-600 border-4 border-black shadow-[6px_6px_0_0_#000] text-white animate-pulse rounded-2xl">
                       <p className="font-black uppercase text-xs">⚠️ Room Conflict Detected!</p>
@@ -318,29 +308,29 @@ export default function CalendarView() {
                     {!hasScanned ? (
                       <div className="flex flex-col items-center justify-center py-10">
                         <button disabled={!selectedRoom && selectedGuests.length === 0} onClick={handleManualScan} className="bg-blue-600 text-white font-black p-5 px-12 border-4 border-black shadow-[4px_4px_0_0_#000] hover:bg-black uppercase italic tracking-widest disabled:opacity-30 rounded-2xl transition-all">Scan Available Slots</button>
-                        <p className="text-[10px] font-black uppercase mt-4 opacity-40">10:00 AM - 07:00 PM organization window</p>
+                        <p className="text-[10px] font-black uppercase mt-4 opacity-40 text-black">10:00 AM - 07:00 PM organization window</p>
                       </div>
                     ) : isScanning ? (
                       <div className="flex flex-col items-center justify-center py-10">
                         <div className="w-12 h-12 border-8 border-black border-t-blue-600 animate-spin mb-4 rounded-full"></div>
-                        <p className="font-black text-xs animate-pulse tracking-widest uppercase italic text-black">Pinging Google...</p>
+                        <p className="font-black text-xs animate-pulse tracking-widest uppercase italic text-black font-black">Syncing Google...</p>
                       </div>
                     ) : (
                       <div className="space-y-4">
-                        <div className="flex justify-between items-center border-b-2 border-black pb-2">
+                        <div className="flex justify-between items-center border-b-2 border-black pb-2 text-black">
                            <p className="font-black text-[10px] uppercase italic text-black">Verified Free Gaps ({duration}m blocks)</p>
                            <button onClick={handleManualScan} className="text-[8px] font-black underline uppercase hover:text-blue-600 transition-colors">Re-Scan</button>
                         </div>
                         {suggestions.length > 0 ? (
                           <div className="grid grid-cols-5 gap-2">
                             {suggestions.map(t => (
-                              <button key={t} onClick={() => {setFormTime(t); setBypassConflict(false);}} className={`p-2 border-2 border-black font-black text-[10px] rounded-xl transition-all ${formTime === t ? 'bg-emerald-500 text-white translate-y-1 shadow-none' : 'bg-white shadow-[3px_3px_0_0_#000] hover:bg-yellow-100'}`}>
+                              <button key={t} onClick={() => {setFormTime(t); setBypassConflict(false);}} className={`p-2 border-2 border-black font-black text-[10px] rounded-xl transition-all ${formTime === t ? 'bg-emerald-500 text-white translate-y-1 shadow-none' : 'bg-white shadow-[3px_3px_0_0_#000] hover:bg-yellow-100 text-black'}`}>
                                 {format(parse(t, 'HH:mm', new Date()), 'hh:mm a')}
                               </button>
                             ))}
                           </div>
                         ) : (
-                          <div className="text-center py-6 text-rose-600 font-black uppercase text-[10px] italic">No common availability. Try shifting date or changing panel.</div>
+                          <div className="text-center py-6 text-rose-600 font-black uppercase text-[10px] italic">No common availability found. Try shifting date or changing panel.</div>
                         )}
                       </div>
                     )}
@@ -348,16 +338,16 @@ export default function CalendarView() {
 
                   <div className="p-4 border-4 border-black bg-slate-100 flex items-center justify-between rounded-2xl">
                     <label className="flex items-center gap-3 cursor-pointer group">
-                        <input type="checkbox" checked={bypassConflict} onChange={e => setBypassConflict(e.target.checked)} className="w-6 h-6 border-4 border-black bg-white appearance-none checked:bg-rose-600 cursor-pointer rounded-lg" />
-                        <span className="font-black text-xs uppercase italic tracking-tighter group-hover:text-blue-600">Bypass Schedule Check (Force Manual)</span>
+                        <input type="checkbox" checked={bypassConflict} onChange={e => setBypassConflict(e.target.checked)} className="w-6 h-6 border-4 border-black bg-white appearance-none checked:bg-rose-600 cursor-pointer rounded-lg shadow-inner" />
+                        <span className="font-black text-xs uppercase italic tracking-tighter group-hover:text-blue-600 text-black">Bypass Schedule Check (Manual Force)</span>
                     </label>
                     {bypassConflict && (
-                        <input type="time" value={formTime} onChange={e => setFormTime(e.target.value)} className="p-2 border-2 border-black font-black bg-white outline-none rounded-lg" />
+                        <input type="time" value={formTime} onChange={e => setFormTime(e.target.value)} className="p-2 border-2 border-black font-black bg-white outline-none rounded-lg text-black" />
                     )}
                   </div>
 
                   <div className="grid grid-cols-2 gap-4 pt-4">
-                    <button onClick={() => setStep(1)} className="p-4 border-4 border-black font-black uppercase hover:bg-slate-100 rounded-2xl transition-all">Back</button>
+                    <button onClick={() => setStep(1)} className="p-4 border-4 border-black font-black uppercase hover:bg-slate-100 rounded-2xl transition-all text-black">Back</button>
                     <button disabled={!formTime} onClick={() => setStep(3)} className="p-4 bg-black text-white font-black uppercase shadow-[6px_6px_0_0_#000] active:translate-y-1 transition-all rounded-2xl">Final Review →</button>
                   </div>
                 </div>
@@ -366,25 +356,25 @@ export default function CalendarView() {
               {/* STEP 3 */}
               {step === 3 && (
                 <div className="space-y-6">
-                  <h2 className="text-4xl font-black italic uppercase tracking-tighter leading-none border-b-4 border-black pb-4">3. Final Review</h2>
+                  <h2 className="text-4xl font-black italic uppercase tracking-tighter leading-none border-b-4 border-black pb-4 text-black">3. Final Review</h2>
                   
                   <div className="bg-slate-900 text-white p-10 border-4 border-black rounded-[2.5rem] shadow-[12px_12px_0_0_#000] space-y-8 relative overflow-hidden">
-                      <div className="absolute top-0 right-0 p-10 opacity-10 font-black text-8xl italic">GENIE</div>
+                      <div className="absolute top-0 right-0 p-10 opacity-10 font-black text-8xl italic">ATS</div>
                       <div className="relative z-10">
-                        <div className="border-b border-white/20 pb-4 mb-6">
+                        <div className="border-b border-white/20 pb-4 mb-6 text-left">
                             <p className="text-[10px] uppercase font-black opacity-40 mb-1 tracking-widest leading-none">Applicant</p>
-                            <h3 className="font-black text-5xl uppercase tracking-tighter leading-none">{selectedApp?.name}</h3>
+                            <h3 className="font-black text-5xl uppercase tracking-tighter leading-none text-white">{selectedApp?.name}</h3>
                         </div>
-                        <div className="grid grid-cols-2 gap-10">
+                        <div className="grid grid-cols-2 gap-10 text-left">
                             <div>
                                 <p className="text-[10px] uppercase font-black opacity-40 mb-1 tracking-widest leading-none text-white">Schedule</p>
-                                <p className="font-black text-2xl leading-none italic">{formDate}</p>
+                                <p className="font-black text-2xl leading-none italic text-white">{formDate}</p>
                                 <p className="font-black text-4xl text-emerald-400 mt-2 uppercase leading-none">{formTime ? format(parse(formTime, 'HH:mm', new Date()), 'hh:mm a') : 'MANUAL'}</p>
                             </div>
                             <div>
                                 <p className="text-[10px] uppercase font-black opacity-40 mb-1 tracking-widest leading-none text-white">Venue</p>
-                                <p className="font-black text-xl leading-tight uppercase underline decoration-emerald-500">{MEETING_ROOMS.find(r => r.email === selectedRoom)?.name || 'Online'}</p>
-                                <p className="font-black text-[10px] uppercase opacity-60 mt-3 italic">{duration} Minute Session</p>
+                                <p className="font-black text-xl leading-tight uppercase underline decoration-emerald-500 text-white">{MEETING_ROOMS.find(r => r.email === selectedRoom)?.name || 'Online Portal'}</p>
+                                <p className="font-black text-[10px] uppercase opacity-60 mt-3 italic text-white">{duration} Minute Session</p>
                             </div>
                         </div>
                       </div>
@@ -396,9 +386,9 @@ export default function CalendarView() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-4 pt-4">
-                    <button onClick={() => setStep(2)} className="p-5 border-4 border-black font-black uppercase hover:bg-slate-50 transition-all rounded-2xl italic tracking-tighter">← Back</button>
+                    <button onClick={() => setStep(2)} className="p-5 border-4 border-black font-black uppercase hover:bg-slate-50 transition-all rounded-2xl italic tracking-tighter text-black">← Back to Logistics</button>
                     <button disabled={isSyncing} onClick={handleSave} className={`p-5 font-black uppercase border-4 border-black shadow-[8px_8px_0_0_#000] active:translate-y-1 transition-all rounded-2xl ${isSyncing ? 'bg-slate-200 text-slate-400 animate-pulse' : 'bg-emerald-500 text-white hover:bg-black underline decoration-white'}`}>
-                        {isSyncing ? 'Synchronizing...' : 'Finalize & Sync'}
+                        {isSyncing ? 'Synchronizing...' : 'Finalize & Sync Booking'}
                     </button>
                   </div>
                 </div>
