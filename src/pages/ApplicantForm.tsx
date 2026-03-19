@@ -7,7 +7,11 @@ import * as pdfjsLib from 'pdfjs-dist';
 import * as mammoth from 'mammoth'; // Word Document Parser
 
 // Connect the PDF reader to a cloud worker so it runs smoothly
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+// This uses the local version that came with your npm install
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.min.mjs',
+  import.meta.url
+).toString();
 
 export default function ApplicantForm() {
   const navigate = useNavigate();
