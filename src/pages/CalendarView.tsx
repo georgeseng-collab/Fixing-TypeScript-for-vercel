@@ -10,7 +10,7 @@ const locales = { 'en-US': enUS };
 const localizer = dateFnsLocalizer({ format, parse, startOfWeek, getDay, locales });
 
 // --- UPDATED GOOGLE SCRIPT URL ---
-const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx97V6FDvGhHmQ3m-SJOZVHnuWVM8luEsclreT0N9TtFOIXbtdSdYaqqVwNtVTMg8jE/exec';
+const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw6XJ910WL6FdMkFdeOS_hg1bn4Bji4MxACOAgNxm43iYTRF8uB76tLHzQPaWFcuGy3/exec';
 
 const MEETING_ROOMS = [
   { name: 'Germanium (GE)', email: 'c_18887npjdt67ih5lmtfgahccqnne8@resource.calendar.google.com' },
