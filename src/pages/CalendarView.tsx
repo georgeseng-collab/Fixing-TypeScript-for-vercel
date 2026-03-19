@@ -9,8 +9,8 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 const locales = { 'en-US': enUS };
 const localizer = dateFnsLocalizer({ format, parse, startOfWeek, getDay, locales });
 
-// --- UPDATED NEW SCRIPT URL ---
-const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyBzu5QfSOF0P-P5vaQYAZk9vgM2r92pfoNKJXTvakQxYpvisRa6GlnAIcjtZvUgqNw/exec';
+// --- LATEST SCRIPT URL ---
+const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby6fsroZCcCHsKUu-wvzdqZqVtBffyzS89e9GWw90FVEHw3Gh8C8-AUEFqrkKYKueY0/exec';
 
 const MEETING_ROOMS = [
   { name: 'Germanium (GE)', email: 'c_18887npjdt67ih5lmtfgahccqnne8@resource.calendar.google.com' },
@@ -53,7 +53,6 @@ export default function CalendarView() {
 
   useEffect(() => { fetchData(); }, []);
 
-  // Reset scan results if logistics change
   useEffect(() => {
     setHasScanned(false);
     setSuggestions([]);
@@ -96,8 +95,7 @@ export default function CalendarView() {
       const result = await resp.text();
 
       if (result.includes("UNREACHABLE:")) {
-        const list = result.split("UNREACHABLE:")[1].split("|")[0].split(",").filter(Boolean);
-        setUnreachableEmails(list);
+        setUnreachableEmails(result.split("UNREACHABLE:")[1].split("|")[0].split(",").filter(Boolean));
       }
 
       if (result.includes("SUGGESTIONS:")) {
@@ -146,22 +144,21 @@ export default function CalendarView() {
     try {
       const allGuests = [...selectedGuests, ...(customGuest ? customGuest.split(',').map(e => e.trim()) : [])].join(',');
       
-      // CRITICAL: Ensure base64 string is correctly identified from database
-      const resumeString = selectedApp.resume_base64 || selectedApp.resume || "";
+      const payload = {
+        name: selectedApp.name,
+        role: selectedApp.job_role,
+        date: formDate,
+        time: formTime,
+        guests: allGuests,
+        roomEmail: selectedRoom,
+        roomName: MEETING_ROOMS.find(r => r.email === selectedRoom)?.name || 'Online',
+        duration: duration,
+        fileBase64: selectedApp.resume_base64 || selectedApp.resume || ""
+      };
 
       await fetch(GOOGLE_SCRIPT_URL, {
         method: 'POST', mode: 'no-cors', 
-        body: JSON.stringify({
-          name: selectedApp.name, 
-          role: selectedApp.job_role, 
-          date: formDate, 
-          time: formTime,
-          guests: allGuests, 
-          roomEmail: selectedRoom, 
-          duration: duration,
-          roomName: MEETING_ROOMS.find(r => r.email === selectedRoom)?.name || 'Online',
-          fileBase64: resumeString // PASSING REAL DATA
-        })
+        body: JSON.stringify(payload)
       });
 
       const ts = `${formDate}T${formTime}:00+08:00`;
@@ -227,10 +224,10 @@ export default function CalendarView() {
                     {applicants.map(a => <option key={a.id} value={a.id}>{a.name} ({a.job_role})</option>)}
                   </select>
                   
-                  {/* RESUME INDICATOR - Detects both column naming conventions */}
+                  {/* RESUME INDICATOR */}
                   {selectedApp && (
                     <div className={`p-4 border-2 border-black rounded-xl font-black text-xs uppercase italic flex items-center gap-3 ${(selectedApp.resume_base64 || selectedApp.resume) ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
-                        <span>{(selectedApp.resume_base64 || selectedApp.resume) ? '✓ Resume Linked' : '⚠️ No Resume string found in ATS'}</span>
+                        <span>{(selectedApp.resume_base64 || selectedApp.resume) ? '✓ Resume Attached' : '⚠️ No Resume Found in ATS'}</span>
                     </div>
                   )}
 
@@ -251,6 +248,7 @@ export default function CalendarView() {
                             The following staff are busy at {formTime || "selected time"}: 
                             <span className="font-black ml-1 uppercase">{busyPeople.map(email => teamMembers.find(t => t.email === email)?.name || email).join(", ")}</span>
                         </p>
+                        <p className="text-[10px] font-black mt-2 text-amber-700 underline italic">Please change date or select a suggested slot below.</p>
                     </div>
                   )}
 
@@ -258,7 +256,8 @@ export default function CalendarView() {
                   {hasScanned && roomAlt.length > 0 && selectedRoom && !suggestions.includes(formTime) && (
                     <div className="p-5 bg-rose-600 border-4 border-black shadow-[6px_6px_0_0_#000] text-white animate-pulse rounded-2xl">
                       <p className="font-black uppercase text-xs">⚠️ Room Conflict Detected!</p>
-                      <div className="flex flex-wrap gap-2 mt-2">
+                      <p className="text-[10px] font-bold opacity-80 mb-3 uppercase">Selected room is busy. Use these free rooms instead:</p>
+                      <div className="flex flex-wrap gap-2">
                         {roomAlt.map(alt => (
                           <button key={alt.email} onClick={() => { setSelectedRoom(alt.email); handleManualScan(); }} className="bg-white text-rose-600 px-4 py-1.5 rounded-lg border-2 border-black font-black text-[10px] hover:bg-yellow-300 transition-all">Use {alt.name}</button>
                         ))}
@@ -310,6 +309,7 @@ export default function CalendarView() {
                     {!hasScanned ? (
                       <div className="flex flex-col items-center justify-center py-10">
                         <button disabled={!selectedRoom && selectedGuests.length === 0} onClick={handleManualScan} className="bg-blue-600 text-white font-black p-5 px-12 border-4 border-black shadow-[4px_4px_0_0_#000] hover:bg-black uppercase italic tracking-widest disabled:opacity-30 rounded-2xl transition-all">Scan Available Slots</button>
+                        <p className="text-[10px] font-black uppercase mt-4 opacity-40">10:00 AM - 07:00 PM organization window</p>
                       </div>
                     ) : isScanning ? (
                       <div className="flex flex-col items-center justify-center py-10">
@@ -331,7 +331,7 @@ export default function CalendarView() {
                             ))}
                           </div>
                         ) : (
-                          <div className="text-center py-6 text-rose-600 font-black uppercase text-[10px] italic">No common availability.</div>
+                          <div className="text-center py-6 text-rose-600 font-black uppercase text-[10px] italic">No common availability. Try shifting date or changing panel.</div>
                         )}
                       </div>
                     )}
@@ -340,7 +340,7 @@ export default function CalendarView() {
                   <div className="p-4 border-4 border-black bg-slate-100 flex items-center justify-between rounded-2xl">
                     <label className="flex items-center gap-3 cursor-pointer group">
                         <input type="checkbox" checked={bypassConflict} onChange={e => setBypassConflict(e.target.checked)} className="w-6 h-6 border-4 border-black bg-white appearance-none checked:bg-rose-600 cursor-pointer rounded-lg" />
-                        <span className="font-black text-xs uppercase italic tracking-tighter group-hover:text-blue-600">Bypass Schedule Check</span>
+                        <span className="font-black text-xs uppercase italic tracking-tighter group-hover:text-blue-600">Bypass Schedule Check (Force Manual)</span>
                     </label>
                     {bypassConflict && (
                         <input type="time" value={formTime} onChange={e => setFormTime(e.target.value)} className="p-2 border-2 border-black font-black bg-white outline-none rounded-lg" />
