@@ -28,7 +28,8 @@ export default function ApplicantForm() {
     expected_salary: '', 
     notice_period: '', 
     status: 'Sourcing', 
-    interview_date: '' 
+    interview_date: '',
+    source: '' // NEW: Added source tracking field
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -63,7 +64,7 @@ export default function ApplicantForm() {
         return; 
       }
 
-      // Prepare Submission Data with Recruiter Tags and Salary Sync
+      // Prepare Submission Data with Recruiter Tags, Salary Sync, and Source
       const submissionData = { 
         ...formData,
         // 1. RECRUITER TAGGING
@@ -98,7 +99,7 @@ export default function ApplicantForm() {
     }
   };
 
-  const inputClass = "w-full border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 transition-all bg-slate-50 hover:bg-white font-medium";
+  const inputClass = "w-full border border-slate-300 rounded-lg px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-500 transition-all bg-slate-50 hover:bg-white font-medium appearance-none";
   const labelClass = "block text-[11px] font-black uppercase text-slate-500 mb-1.5 ml-1 tracking-wider";
 
   return (
@@ -115,9 +116,9 @@ export default function ApplicantForm() {
       <form onSubmit={handleSubmit} className="bg-white shadow-2xl border-4 border-slate-900 rounded-[3rem] overflow-hidden">
         <div className="p-10 space-y-10">
           
-          {/* Section 1: Identity */}
+          {/* Section 1: Identity & Sourcing */}
           <div className="space-y-6">
-            <h3 className="text-xs font-black text-blue-600 uppercase tracking-[0.3em] border-b-2 border-slate-100 pb-2">01. Identity</h3>
+            <h3 className="text-xs font-black text-blue-600 uppercase tracking-[0.3em] border-b-2 border-slate-100 pb-2">01. Identity & Origin</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="md:col-span-2">
                 <label className={labelClass}>Full Name <span className="text-red-500">*</span></label>
@@ -130,6 +131,26 @@ export default function ApplicantForm() {
               <div>
                 <label className={labelClass}>Phone <span className="text-red-500">*</span></label>
                 <input required type="tel" className={inputClass} value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
+              </div>
+              
+              {/* NEW SOURCE TRACKING DROPDOWN */}
+              <div className="md:col-span-2">
+                <label className={`${labelClass} text-indigo-600`}>Lead Source <span className="text-red-500">*</span></label>
+                <select 
+                  required 
+                  className={`${inputClass} border-2 border-slate-300 font-bold text-slate-700 cursor-pointer`} 
+                  value={formData.source} 
+                  onChange={e => setFormData({...formData, source: e.target.value})}
+                >
+                  <option value="" disabled>-- How did you find this candidate? --</option>
+                  <option value="LinkedIn">LinkedIn</option>
+                  <option value="Indeed">Indeed</option>
+                  <option value="JobStreet">JobStreet</option>
+                  <option value="Employee Referral">Employee Referral</option>
+                  <option value="Company Website">Company Website</option>
+                  <option value="Direct Sourcing">Direct Sourcing</option>
+                  <option value="Other">Other</option>
+                </select>
               </div>
             </div>
           </div>
