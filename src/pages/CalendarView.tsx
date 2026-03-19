@@ -9,7 +9,6 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 const locales = { 'en-US': enUS };
 const localizer = dateFnsLocalizer({ format, parse, startOfWeek, getDay, locales });
 
-// --- LATEST DEPLOYED GOOGLE SCRIPT ---
 const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzv6nCvwKtR9vxki_2XTWr5LBS49SYk2LBay_QbVwAnv6wNUK1h_NOplJVYEP7QdCBd/exec';
 
 const MEETING_ROOMS = [
@@ -29,12 +28,10 @@ export default function CalendarView() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [showModal, setShowModal] = useState(false);
   
-  // WIZARD CONTROL
   const [step, setStep] = useState(1);
   const [bypassConflict, setBypassConflict] = useState(false);
   const [duration, setDuration] = useState(60); 
 
-  // FORM DATA
   const [selectedApp, setSelectedApp] = useState(null);
   const [selectedRoom, setSelectedRoom] = useState(''); 
   const [selectedGuests, setSelectedGuests] = useState([]);
@@ -42,16 +39,16 @@ export default function CalendarView() {
   const [formDate, setFormDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [formTime, setFormTime] = useState('');
 
-  // SCANNING DATA
   const [suggestions, setSuggestions] = useState([]); 
   const [isScanning, setIsScanning] = useState(false);
 
   useEffect(() => { fetchData(); }, []);
 
-  // --- TRIGGER SCAN ON STEP 2 VARIABLES ---
+  // Trigger Scan when Step 2 criteria change
   useEffect(() => {
     if (step === 2 && showModal) {
-      handleGenerateSlots();
+      const timer = setTimeout(handleGenerateSlots, 500); // Debounce to prevent rapid hits
+      return () => clearTimeout(timer);
     }
   }, [formDate, duration, selectedRoom, selectedGuests, step]);
 
@@ -62,38 +59,38 @@ export default function CalendarView() {
       const { data: team } = await supabase.from('team_members').select('*');
       setApplicants(apps || []);
       setTeamMembers(team || []);
-      
-      const calendarEvents = (apps || []).flatMap(app =>
-        (app.status_history || [])
-          .filter(h => h && h.isManual === true)
-          .map((h, idx) => ({
-            id: `${app.id}_${idx}`,
-            candidate: app,
-            start: new Date(h.date),
-            end: addHours(new Date(h.date), 1),
-            title: `INT: ${app.name}`,
-            rawDate: h.date
-          }))
-      );
-      setEvents(calendarEvents);
-    } catch (e) { console.error(e); }
-    finally { setLoading(false); }
+      const evts = (apps || []).flatMap(app => (app.status_history || [])
+        .filter(h => h && h.isManual).map((h, i) => ({
+          id: `${app.id}_${i}`, candidate: app, start: new Date(h.date), end: addHours(new Date(h.date), 1), title: `INT: ${app.name}`
+        })));
+      setEvents(evts);
+    } finally { setLoading(false); }
   };
 
   const handleGenerateSlots = async () => {
     const emailsToCheck = [selectedRoom, ...selectedGuests].filter(Boolean).join(',');
     if (!emailsToCheck) return;
+    
     setIsScanning(true);
-    setSuggestions([]);
+    setSuggestions([]); // Clear old results
+    
     try {
-      const scanUrl = `${GOOGLE_SCRIPT_URL}?emails=${emailsToCheck}&date=${formDate}&duration=${duration}&mode=scan&ts=${new Date().getTime()}`;
+      const scanUrl = `${GOOGLE_SCRIPT_URL}?emails=${encodeURIComponent(emailsToCheck)}&date=${formDate}&duration=${duration}&mode=scan&ts=${new Date().getTime()}`;
       const resp = await fetch(scanUrl);
       const result = await resp.text();
-      if (result.startsWith("SUGGESTIONS:")) {
-        setSuggestions(result.split(":")[1].split(",").filter(Boolean));
+      
+      if (result.includes("SUGGESTIONS:")) {
+        const slots = result.split("SUGGESTIONS:")[1].split(",").filter(s => s.trim() !== "");
+        setSuggestions(slots);
+      } else {
+        setSuggestions([]);
       }
-    } catch (e) { console.error(e); }
-    finally { setIsScanning(false); }
+    } catch (e) {
+      console.error("Scanning Error:", e);
+      setSuggestions([]);
+    } finally {
+      setIsScanning(false);
+    }
   };
 
   const resetForm = () => {
@@ -102,23 +99,7 @@ export default function CalendarView() {
     setFormDate(format(new Date(), 'yyyy-MM-dd'));
   };
 
-  const handleDelete = async () => {
-    if (!selectedApp) return;
-    if (!window.confirm(`Delete the interview for ${selectedApp.name}?`)) return;
-
-    setIsSyncing(true);
-    try {
-      const targetDate = `${formDate}T${formTime}:00+08:00`;
-      const newHistory = (selectedApp.status_history || []).filter(h => h.date !== targetDate);
-      await supabase.from('applicants').update({ status_history: newHistory }).eq('id', selectedApp.id);
-      alert("Deleted from ATS!");
-      setShowModal(false); resetForm(); fetchData();
-    } catch (e) { alert("Error: " + e.message); }
-    finally { setIsSyncing(false); }
-  };
-
   const handleSave = async () => {
-    if (!formTime && !bypassConflict) return alert("Please select a time slot!");
     setIsSyncing(true);
     try {
       const allGuests = [...selectedGuests, ...(customGuest ? customGuest.split(',').map(e => e.trim()) : [])].join(',');
@@ -131,60 +112,37 @@ export default function CalendarView() {
           fileBase64: "" 
         })
       });
-
       const ts = `${formDate}T${formTime}:00+08:00`;
       let history = [...(selectedApp.status_history || []), { status: 'Interview Scheduled', date: ts, isManual: true }];
       await supabase.from('applicants').update({ status_history: history }).eq('id', selectedApp.id);
-      
-      alert("SUCCESS: Interview Synced!");
+      alert("SUCCESS: Calendar Synced!");
       setShowModal(false); resetForm(); fetchData();
-    } catch (e) { alert("Error: " + e.message); }
-    finally { setIsSyncing(false); }
+    } finally { setIsSyncing(false); }
   };
 
-  if (loading) return <div className="p-20 font-black text-4xl italic uppercase animate-pulse text-blue-600">Loading Scheduler...</div>;
+  if (loading) return <div className="p-20 font-black text-4xl uppercase animate-pulse text-blue-600">Syncing...</div>;
 
   return (
     <div className="p-10 bg-slate-50 min-h-screen font-sans">
       {/* HEADER */}
       <div className="flex justify-between items-center mb-10 bg-white p-8 border-4 border-black shadow-[8px_8px_0_0_#000]">
-        <div>
-          <h1 className="text-5xl font-black italic uppercase leading-none text-slate-900 tracking-tighter">GenieBook</h1>
-          <p className="font-bold text-[10px] text-slate-400 mt-2 uppercase italic tracking-widest leading-none">Scheduler v12.0</p>
-        </div>
-        <button onClick={() => { resetForm(); setShowModal(true); }} className="bg-blue-600 text-white p-5 px-10 border-4 border-black font-black uppercase shadow-[4px_4px_0_0_#000] hover:bg-black transition-all">+ NEW BOOKING</button>
+        <h1 className="text-5xl font-black italic uppercase leading-none text-slate-900 tracking-tighter">Scheduler</h1>
+        <button onClick={() => { resetForm(); setShowModal(true); }} className="bg-blue-600 text-white p-5 px-10 border-4 border-black font-black shadow-[4px_4px_0_0_#000]">+ NEW</button>
       </div>
 
-      {/* CALENDAR VIEW */}
+      {/* CALENDAR */}
       <div className="h-[750px] border-4 border-black p-4 bg-white shadow-[12px_12px_0_0_#000]">
-        <Calendar 
-          localizer={localizer} 
-          events={events} 
-          selectable 
-          defaultView="week"
-          onSelectEvent={(e) => { 
-            setSelectedApp(e.candidate); 
-            setFormDate(format(e.start, 'yyyy-MM-dd'));
-            setFormTime(format(e.start, 'HH:mm'));
-            setStep(3); // Jump straight to finalize
-            setShowModal(true); 
-          }}
-          onSelectSlot={({start}) => { 
-            resetForm(); 
-            setFormDate(format(start, 'yyyy-MM-dd')); 
-            setShowModal(true); 
-          }}
-          eventPropGetter={() => ({ style: { backgroundColor: '#2563eb', border: '3px solid black' } })}
+        <Calendar localizer={localizer} events={events} selectable defaultView="week"
+          onSelectSlot={({start}) => { resetForm(); setFormDate(format(start, 'yyyy-MM-dd')); setShowModal(true); }}
         />
       </div>
 
-      {/* 3-STEP WIZARD MODAL */}
+      {/* MODAL */}
       {showModal && (
         <div className="fixed inset-0 bg-black/90 z-[100] flex items-center justify-center p-6 backdrop-blur-sm">
           <div className="bg-white border-8 border-black w-full max-w-4xl max-h-[95vh] overflow-y-auto p-10 shadow-[25px_25px_0_0_#000]">
             
-            {/* STEP PROGRESS */}
-            <div className="flex gap-2 mb-10">
+            <div className="flex gap-2 mb-8">
                 {[1, 2, 3].map(i => (
                     <div key={i} className={`h-3 flex-1 border-2 border-black ${step >= i ? 'bg-blue-600' : 'bg-slate-200'}`} />
                 ))}
@@ -194,50 +152,50 @@ export default function CalendarView() {
               {/* --- STEP 1: CANDIDATE --- */}
               {step === 1 && (
                 <div className="space-y-6">
-                  <h2 className="text-4xl font-black italic uppercase tracking-tighter">1. Choose Candidate</h2>
-                  <select className="w-full p-5 border-4 border-black font-black bg-white text-xl outline-none" value={selectedApp?.id || ''} onChange={e => setSelectedApp(applicants.find(a => a.id === e.target.value))}>
-                    <option value="">-- Select Candidate --</option>
+                  <h2 className="text-4xl font-black italic uppercase tracking-tighter">1. Select Candidate</h2>
+                  <select className="w-full p-5 border-4 border-black font-black bg-white text-xl" value={selectedApp?.id || ''} onChange={e => setSelectedApp(applicants.find(a => a.id === e.target.value))}>
+                    <option value="">-- Choose Candidate --</option>
                     {applicants.map(a => <option key={a.id} value={a.id}>{a.name} ({a.job_role})</option>)}
                   </select>
-                  <button disabled={!selectedApp} onClick={() => setStep(2)} className="w-full p-6 bg-black text-white font-black uppercase shadow-[6px_6px_0_0_#000] hover:bg-blue-600 transition-all">Next: Setup Details →</button>
+                  <button disabled={!selectedApp} onClick={() => setStep(2)} className="w-full p-6 bg-black text-white font-black uppercase shadow-[6px_6px_0_0_#000]">Next →</button>
                 </div>
               )}
 
-              {/* --- STEP 2: SETUP & SLOTS --- */}
+              {/* --- STEP 2: LOGISTICS & LIVE SCAN --- */}
               {step === 2 && (
                 <div className="space-y-6">
-                  <h2 className="text-4xl font-black italic uppercase tracking-tighter leading-none">2. Logistics & Availability</h2>
+                  <h2 className="text-4xl font-black italic uppercase tracking-tighter">2. Availability Setup</h2>
                   
                   <div className="grid grid-cols-2 gap-6">
                     <div className="space-y-4">
                       <div className="p-4 bg-yellow-300 border-4 border-black">
-                        <label className="font-black text-xs uppercase italic">Interview Date</label>
-                        <input type="date" value={formDate} onChange={e => setFormDate(e.target.value)} className="w-full p-3 border-4 border-black font-black bg-white mt-1 outline-none" />
+                        <label className="font-black text-[10px] uppercase italic">Interview Date</label>
+                        <input type="date" value={formDate} onChange={e => setFormDate(e.target.value)} className="w-full p-2 border-2 border-black font-black bg-white mt-1 outline-none" />
                       </div>
 
                       <div className="p-4 bg-emerald-100 border-4 border-black">
-                        <label className="font-black text-xs uppercase italic">Length</label>
+                        <label className="font-black text-[10px] uppercase italic">Duration</label>
                         <div className="flex gap-2 mt-2">
-                          <button onClick={() => setDuration(30)} className={`flex-1 p-2 border-4 border-black font-black text-xs ${duration === 30 ? 'bg-emerald-500 text-white' : 'bg-white'}`}>30 MIN</button>
-                          <button onClick={() => setDuration(60)} className={`flex-1 p-2 border-4 border-black font-black text-xs ${duration === 60 ? 'bg-emerald-500 text-white' : 'bg-white'}`}>1 HOUR</button>
+                          <button onClick={() => setDuration(30)} className={`flex-1 p-2 border-2 border-black font-black text-xs ${duration === 30 ? 'bg-emerald-500 text-white' : 'bg-white'}`}>30m</button>
+                          <button onClick={() => setDuration(60)} className={`flex-1 p-2 border-2 border-black font-black text-xs ${duration === 60 ? 'bg-emerald-500 text-white' : 'bg-white'}`}>1h</button>
                         </div>
                       </div>
 
                       <div className="p-4 bg-white border-4 border-black">
-                        <label className="font-black text-xs uppercase italic">Meeting Room</label>
-                        <select className="w-full p-3 border-4 border-black font-black mt-2 bg-white outline-none" value={selectedRoom} onChange={e => setSelectedRoom(e.target.value)}>
-                            <option value="">Virtual Meeting</option>
+                        <label className="font-black text-[10px] uppercase italic">Room</label>
+                        <select className="w-full p-2 border-2 border-black font-black mt-1 bg-white" value={selectedRoom} onChange={e => setSelectedRoom(e.target.value)}>
+                            <option value="">Virtual</option>
                             {MEETING_ROOMS.map(r => <option key={r.email} value={r.email}>{r.name}</option>)}
                         </select>
                       </div>
                     </div>
 
                     <div className="space-y-2">
-                      <label className="font-black text-xs uppercase italic ml-2">Internal Interviewers</label>
-                      <div className="grid grid-cols-2 gap-2 p-4 bg-slate-50 border-4 border-black h-[280px] overflow-y-auto">
+                      <label className="font-black text-[10px] uppercase italic ml-2">Team</label>
+                      <div className="grid grid-cols-2 gap-2 p-4 bg-slate-50 border-4 border-black h-[240px] overflow-y-auto">
                           {teamMembers.map(m => (
                               <button key={m.email} onClick={() => setSelectedGuests(prev => prev.includes(m.email) ? prev.filter(x => x !== m.email) : [...prev, m.email])}
-                                  className={`p-3 border-4 border-black font-black text-[10px] uppercase transition-all ${selectedGuests.includes(m.email) ? 'bg-blue-600 text-white shadow-none translate-y-1' : 'bg-white shadow-[3px_3px_0_0_#000]'}`}>
+                                  className={`p-2 border-2 border-black font-black text-[10px] uppercase transition-all ${selectedGuests.includes(m.email) ? 'bg-blue-600 text-white shadow-none translate-y-1' : 'bg-white shadow-[2px_2px_0_0_#000]'}`}>
                                   {m.name}
                               </button>
                           ))}
@@ -245,38 +203,43 @@ export default function CalendarView() {
                     </div>
                   </div>
 
-                  {/* SLOT GENERATOR */}
-                  <div className="p-5 border-4 border-black bg-blue-50 space-y-4 shadow-[4px_4px_0_0_#000]">
-                    <div className="flex justify-between items-center border-b-2 border-black pb-2">
-                        <label className="font-black text-[10px] uppercase italic text-blue-800 tracking-widest">Available Slots (10am - 7pm)</label>
-                        {isScanning && <span className="text-[10px] font-black animate-pulse">Scanning...</span>}
-                    </div>
-                    <div className="grid grid-cols-4 gap-2">
-                        {!isScanning && suggestions.map(t => (
-                            <button key={t} onClick={() => {setFormTime(t); setBypassConflict(false);}} className={`p-3 border-2 border-black font-black text-[10px] transition-all ${formTime === t ? 'bg-emerald-500 text-white translate-y-1 shadow-none' : 'bg-white shadow-[3px_3px_0_0_#000] hover:bg-yellow-100'}`}>
-                                {format(parse(t, 'HH:mm', new Date()), 'hh:mm a')}
-                            </button>
+                  {/* SLOT SCANNER SECTION */}
+                  <div className="p-6 border-4 border-black bg-blue-50 shadow-[4px_4px_0_0_#000] min-h-[180px]">
+                    <p className="font-black text-[10px] uppercase italic mb-4 border-b-2 border-black pb-2">Available Time Gaps (10am - 7pm)</p>
+                    
+                    {isScanning ? (
+                      <div className="flex flex-col items-center justify-center py-6">
+                        <div className="w-8 h-8 border-4 border-black border-t-blue-600 animate-spin mb-2"></div>
+                        <p className="font-black text-[10px] animate-pulse">Scanning Calendars...</p>
+                      </div>
+                    ) : suggestions.length > 0 ? (
+                      <div className="grid grid-cols-4 gap-2">
+                        {suggestions.map(t => (
+                          <button key={t} onClick={() => {setFormTime(t); setBypassConflict(false);}} className={`p-2 border-2 border-black font-black text-[10px] transition-all ${formTime === t ? 'bg-emerald-500 text-white translate-y-1 shadow-none' : 'bg-white shadow-[2px_2px_0_0_#000] hover:bg-yellow-100'}`}>
+                            {format(parse(t, 'HH:mm', new Date()), 'hh:mm a')}
+                          </button>
                         ))}
-                    </div>
-                    {!isScanning && suggestions.length === 0 && (
-                        <p className="text-rose-600 font-black text-[10px] uppercase text-center py-2 italic tracking-tighter underline">No common free gaps found. Try another date or bypass.</p>
+                      </div>
+                    ) : (
+                      <div className="text-center py-6 border-2 border-dashed border-black/20">
+                        <p className="text-rose-600 font-black text-[10px] uppercase">No availability found for this selection.</p>
+                      </div>
                     )}
                   </div>
 
-                  {/* BYPASS */}
                   <div className="p-4 border-4 border-black bg-slate-100 flex items-center justify-between">
                     <label className="flex items-center gap-3 cursor-pointer">
-                        <input type="checkbox" checked={bypassConflict} onChange={e => setBypassConflict(e.target.checked)} className="w-6 h-6 border-4 border-black bg-white appearance-none checked:bg-rose-600 cursor-pointer transition-all" />
-                        <span className="font-black text-xs uppercase italic">Bypass Timing (Force Manual)</span>
+                        <input type="checkbox" checked={bypassConflict} onChange={e => setBypassConflict(e.target.checked)} className="w-6 h-6 border-4 border-black bg-white appearance-none checked:bg-rose-600 cursor-pointer" />
+                        <span className="font-black text-xs uppercase italic">Bypass Timing</span>
                     </label>
                     {bypassConflict && (
-                        <input type="time" value={formTime} onChange={e => setFormTime(e.target.value)} className="p-3 border-4 border-black font-black bg-white outline-none" />
+                        <input type="time" value={formTime} onChange={e => setFormTime(e.target.value)} className="p-2 border-2 border-black font-black bg-white" />
                     )}
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
-                    <button onClick={() => setStep(1)} className="p-6 border-4 border-black font-black uppercase hover:bg-slate-50">Back</button>
-                    <button disabled={!formTime} onClick={() => setStep(3)} className="p-6 bg-black text-white font-black uppercase shadow-[6px_6px_0_0_#000] hover:bg-blue-600 active:translate-y-1 active:shadow-none transition-all">Next: Finalize →</button>
+                    <button onClick={() => setStep(1)} className="p-4 border-4 border-black font-black uppercase">Back</button>
+                    <button disabled={!formTime} onClick={() => setStep(3)} className="p-4 bg-black text-white font-black uppercase shadow-[4px_4px_0_0_#000]">Finalize →</button>
                   </div>
                 </div>
               )}
@@ -284,52 +247,34 @@ export default function CalendarView() {
               {/* --- STEP 3: FINALIZE --- */}
               {step === 3 && (
                 <div className="space-y-6">
-                  <div className="flex justify-between items-end">
-                    <h2 className="text-4xl font-black italic uppercase leading-none tracking-tighter">3. Confirmation</h2>
-                    {selectedApp && (
-                      <button onClick={handleDelete} className="bg-rose-500 text-white p-2 border-2 border-black font-black text-[10px] uppercase shadow-[3px_3px_0_0_#000]">Delete Event</button>
-                    )}
-                  </div>
+                  <h2 className="text-4xl font-black italic uppercase tracking-tighter">3. Confirmation</h2>
                   
-                  <div className="bg-slate-900 text-white p-10 border-4 border-black shadow-[10px_10px_0_0_#000] space-y-6">
-                      <div className="border-b border-white/20 pb-4">
-                        <p className="text-[10px] uppercase font-black opacity-40 mb-1 tracking-widest leading-none">Candidate Name</p>
-                        <h3 className="font-black text-4xl uppercase tracking-tighter leading-none">{selectedApp?.name}</h3>
-                      </div>
-                      
-                      <div className="grid grid-cols-2 gap-10">
+                  <div className="bg-slate-900 text-white p-8 border-4 border-black shadow-[10px_10px_0_0_#000] space-y-4">
+                      <h3 className="font-black text-3xl border-b border-white/20 pb-2 tracking-tighter uppercase">{selectedApp?.name}</h3>
+                      <div className="grid grid-cols-2 gap-6 text-[10px] font-black uppercase">
                         <div>
-                          <p className="text-[10px] uppercase font-black opacity-40 mb-1 tracking-widest leading-none">Schedule</p>
-                          <p className="font-black text-xl leading-none">{formDate}</p>
-                          <p className="font-black text-2xl text-emerald-400 mt-2 leading-none uppercase">{formTime ? format(parse(formTime, 'HH:mm', new Date()), 'hh:mm a') : 'MANUAL'}</p>
+                          <p className="opacity-40">Schedule</p>
+                          <p className="text-xl">{formDate}</p>
+                          <p className="text-xl text-emerald-400">{format(parse(formTime, 'HH:mm', new Date()), 'hh:mm a')}</p>
                         </div>
                         <div>
-                          <p className="text-[10px] uppercase font-black opacity-40 mb-1 tracking-widest leading-none">Room & Duration</p>
-                          <p className="font-black text-sm uppercase leading-tight">{MEETING_ROOMS.find(r => r.email === selectedRoom)?.name || 'Online'}</p>
-                          <p className="font-black text-sm uppercase opacity-60 mt-2">{duration} Minutes</p>
+                          <p className="opacity-40">Logistics</p>
+                          <p className="text-sm">{MEETING_ROOMS.find(r => r.email === selectedRoom)?.name || 'Online'}</p>
+                          <p className="text-sm opacity-60">{duration} Minutes</p>
                         </div>
-                      </div>
-
-                      <div className="pt-4 border-t border-white/20">
-                         <p className="text-[10px] uppercase font-black opacity-40 mb-2 tracking-widest leading-none">Internal Team</p>
-                         <p className="text-xs font-bold leading-relaxed">{selectedGuests.length > 0 ? selectedGuests.join(', ') : 'None selected'}</p>
                       </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <p className="font-black uppercase text-xs italic ml-2 leading-none opacity-50 tracking-tighter">Add CC Emails (Janice/Others)</p>
-                    <input type="text" value={customGuest} onChange={e => setCustomGuest(e.target.value)} className="w-full p-5 border-4 border-black font-black outline-none bg-white shadow-inner" placeholder="janice.sia@geniebook.com" />
-                  </div>
+                  <input type="text" value={customGuest} onChange={e => setCustomGuest(e.target.value)} className="w-full p-4 border-4 border-black font-black outline-none" placeholder="Add CC Emails (Janice/Others)" />
 
-                  <div className="grid grid-cols-2 gap-4 pt-4">
-                    <button onClick={() => setStep(2)} className="p-6 border-4 border-black font-black uppercase hover:bg-slate-50 transition-all">← Back</button>
-                    <button disabled={isSyncing} onClick={handleSave} className={`p-6 font-black uppercase border-4 border-black shadow-[8px_8px_0_0_#000] active:shadow-none active:translate-y-1 transition-all ${isSyncing ? 'bg-slate-200 text-slate-400 animate-pulse' : 'bg-emerald-500 text-white hover:bg-black hover:text-emerald-500'}`}>
-                        {isSyncing ? 'Synchronizing...' : 'Finalize & Sync'}
+                  <div className="grid grid-cols-2 gap-4">
+                    <button onClick={() => setStep(2)} className="p-4 border-4 border-black font-black uppercase">← Back</button>
+                    <button disabled={isSyncing} onClick={handleSave} className={`p-4 font-black uppercase border-4 border-black shadow-[6px_6px_0_0_#000] ${isSyncing ? 'bg-slate-200' : 'bg-emerald-500 text-white hover:bg-black'}`}>
+                        {isSyncing ? 'Syncing...' : 'Confirm & Sync'}
                     </button>
                   </div>
                 </div>
               )}
-
             </div>
           </div>
         </div>
