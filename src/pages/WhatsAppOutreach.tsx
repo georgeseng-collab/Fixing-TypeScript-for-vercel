@@ -6,8 +6,8 @@ const RECRUITERS = [
   "Shin Leng",
   "Janice",
   "George",
-  "From Geniebook Recruitment Team",
-  "Recruiter from Geniebook"
+  "HR",
+  "Recruiter"
 ];
 
 const SOURCES = [
@@ -57,7 +57,7 @@ export default function WhatsAppOutreach() {
     } 
     
     else if (mode === 'write-in') {
-      msg = `Hi ${candidateName}, I am ${recruiterName}. I have received your profile from ${finalSource || '[Source]'}. Can I check for a few more details / arrange a short call before sending up the resume for review?\n\n` +
+      msg = `Hi ${candidateName}, I am ${recruiterName} from Geniebook. I have received your profile from ${finalSource || '[Source]'}. Can I check for a few more details / arrange a short call before sending up the resume for review?\n\n` +
             `Could you provide the following:\n` +
             `1) Last Drawn Salary: \n` +
             `2) Expected Salary: \n` +
