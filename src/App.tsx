@@ -16,7 +16,8 @@ import Login from './pages/Login';
 import EmailHub from './pages/EmailHub'; 
 import ApprovalHub from './pages/ApprovalHub';
 import TeamSettings from './pages/TeamSettings';
-import Leaderboard from './pages/Leaderboard'; // <--- IMPORTED LEADERBOARD
+import Leaderboard from './pages/Leaderboard';
+import WhatsAppOutreach from './pages/WhatsAppOutreach'; // <--- NEW IMPORT
 
 export default function App() {
   const [session, setSession] = useState(undefined);
@@ -52,6 +53,9 @@ export default function App() {
         <Route path="/search" element={session ? <Layout><CandidateSearch /></Layout> : <Navigate to="/login" />} />
         <Route path="/calendar" element={session ? <Layout><CalendarView /></Layout> : <Navigate to="/login" />} />
         <Route path="/archive" element={session ? <Layout><Archive /></Layout> : <Navigate to="/login" />} />
+        
+        {/* NEW WHATSAPP OUTREACH ROUTE */}
+        <Route path="/whatsapp" element={session ? <Layout><WhatsAppOutreach /></Layout> : <Navigate to="/login" />} />
         
         {/* Management & Internal Tools */}
         <Route path="/offers" element={session ? <Layout><EmailHub /></Layout> : <Navigate to="/login" />} />
