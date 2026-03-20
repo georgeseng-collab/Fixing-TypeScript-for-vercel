@@ -266,6 +266,8 @@ export default function ApplicantForm() {
                   <option value="JobStreet">JobStreet</option>
                   <option value="Employee Referral">Employee Referral</option>
                   <option value="Company Website">Company Website</option>
+                  <option value="MyCareerFuture">MyCareerFuture</option>
+                  <option value="Fastjobs">Fastjobs</option>
                   <option value="Direct Sourcing">Direct Sourcing</option>
                   <option value="Other">Other</option>
                 </select>
