@@ -3,11 +3,11 @@ import React, { useState } from 'react';
 import { format } from 'date-fns';
 
 const RECRUITERS = [
-  "Geniebook Recruitment",
+  "Shin Leng",
   "Janice",
   "George",
-  "Recruitment Team A",
-  "Recruitment Team B"
+  "From Geniebook Recruitment Team",
+  "Recruiter from Geniebook"
 ];
 
 // The Google Drive link you provided
