@@ -10,14 +10,26 @@ const RECRUITERS = [
   "Recruiter from Geniebook"
 ];
 
-// The Google Drive link you provided
+const SOURCES = [
+  "MyCareerFuture", 
+  "LinkedIn", 
+  "JobStreet", 
+  "FastJobs", 
+  "CareerFair", 
+  "Others"
+];
+
 const MAP_LINK = "https://drive.google.com/file/d/1xIiiz7bny2IBh6QhXtqZhGEJUC5eoQFN/view?usp=sharing";
 
 export default function WhatsAppOutreach() {
   const [mode, setMode] = useState('write-in'); 
   const [candidateName, setCandidateName] = useState('');
   const [candidatePhone, setCandidatePhone] = useState('');
-  const [source, setSource] = useState('LinkedIn');
+  
+  // --- Updated Source State ---
+  const [selectedSource, setSelectedSource] = useState(SOURCES[0]);
+  const [customSource, setCustomSource] = useState('');
+  
   const [role, setRole] = useState('Sales Executive');
   const [recruiterName, setRecruiterName] = useState(RECRUITERS[0]);
 
@@ -29,6 +41,9 @@ export default function WhatsAppOutreach() {
   const [intTime, setIntTime] = useState('');
   const [interviewer, setInterviewer] = useState('');
 
+  // Determine final source for message
+  const finalSource = selectedSource === "Others" ? customSource : selectedSource;
+
   const getDayOfWeek = (dateString) => {
     if (!dateString) return '';
     return format(new Date(dateString), 'EEEE');
@@ -38,11 +53,11 @@ export default function WhatsAppOutreach() {
     let msg = "";
 
     if (mode === 'headhunting') {
-      msg = `Hi ${candidateName}, I am ${recruiterName}. I came across your Resume at ${source}. Wonder if you will be keen for a new opportunity with us as a [${role}]?`;
+      msg = `Hi ${candidateName}, I am ${recruiterName}. I came across your Resume at ${finalSource || '[Source]'}. Wonder if you will be keen for a new opportunity with us as a [${role}]?`;
     } 
     
     else if (mode === 'write-in') {
-      msg = `Hi ${candidateName}, I am ${recruiterName}. I have received your profile from ${source}. Can I check for a few more details / arrange a short call before sending up the resume for review?\n\n` +
+      msg = `Hi ${candidateName}, I am ${recruiterName}. I have received your profile from ${finalSource || '[Source]'}. Can I check for a few more details / arrange a short call before sending up the resume for review?\n\n` +
             `Could you provide the following:\n` +
             `1) Last Drawn Salary: \n` +
             `2) Expected Salary: \n` +
@@ -99,10 +114,12 @@ export default function WhatsAppOutreach() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
         <div className="space-y-6">
+          
+          {/* Recruiter Selector */}
           <div className="bg-white p-8 border-4 border-black rounded-[2.5rem] shadow-[8px_8px_0_0_#000]">
             <h3 className="font-black uppercase italic text-xs mb-4 text-blue-600">Recruiter Profile</h3>
             <select 
-              className="w-full p-3 border-2 border-black rounded-lg font-bold bg-white"
+              className="w-full p-3 border-2 border-black rounded-lg font-bold bg-white outline-none"
               value={recruiterName}
               onChange={e => setRecruiterName(e.target.value)}
             >
@@ -121,14 +138,37 @@ export default function WhatsAppOutreach() {
             </div>
           </div>
 
+          {/* Updated Step 2: Candidate Data with Source Dropdown */}
           <div className="bg-white p-8 border-4 border-black rounded-[2.5rem] shadow-[8px_8px_0_0_#000] space-y-4">
             <h3 className="font-black uppercase italic text-xs mb-2 text-blue-600">Step 2: Candidate Data</h3>
-            <input type="text" placeholder="Candidate Name" className="w-full p-3 border-2 border-black rounded-lg font-bold" value={candidateName} onChange={e => setCandidateName(e.target.value)} />
-            <input type="tel" placeholder="Phone Number (e.g. 91234567)" className="w-full p-3 border-2 border-black rounded-lg font-bold" value={candidatePhone} onChange={e => setCandidatePhone(e.target.value)} />
+            <input type="text" placeholder="Candidate Name" className="w-full p-3 border-2 border-black rounded-lg font-bold outline-none focus:border-blue-500" value={candidateName} onChange={e => setCandidateName(e.target.value)} />
+            <input type="tel" placeholder="Phone Number" className="w-full p-3 border-2 border-black rounded-lg font-bold outline-none focus:border-blue-500" value={candidatePhone} onChange={e => setCandidatePhone(e.target.value)} />
+            
             {mode !== 'interview' && (
               <>
-                <input type="text" placeholder="Source (LinkedIn, JobStreet...)" className="w-full p-3 border-2 border-black rounded-lg font-bold" value={source} onChange={e => setSource(e.target.value)} />
-                <input type="text" placeholder="Role Name" className="w-full p-3 border-2 border-black rounded-lg font-bold" value={role} onChange={e => setRole(e.target.value)} />
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1 italic">Application Source</label>
+                  <select 
+                    className="w-full p-3 border-2 border-black rounded-lg font-bold bg-white outline-none"
+                    value={selectedSource}
+                    onChange={e => setSelectedSource(e.target.value)}
+                  >
+                    {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                  
+                  {/* Show text input only if 'Others' is selected */}
+                  {selectedSource === "Others" && (
+                    <input 
+                      type="text" 
+                      placeholder="Type custom source here..." 
+                      className="w-full p-3 border-2 border-blue-500 rounded-lg font-bold outline-none bg-blue-50 animate-in slide-in-from-top-2 duration-300"
+                      value={customSource}
+                      onChange={e => setCustomSource(e.target.value)}
+                    />
+                  )}
+                </div>
+
+                <input type="text" placeholder="Role Name" className="w-full p-3 border-2 border-black rounded-lg font-bold outline-none" value={role} onChange={e => setRole(e.target.value)} />
               </>
             )}
           </div>
@@ -146,6 +186,7 @@ export default function WhatsAppOutreach() {
           )}
         </div>
 
+        {/* Live Preview Card */}
         <div className="lg:sticky lg:top-10 h-fit">
           <div className="bg-white p-8 border-4 border-black rounded-[3rem] shadow-[12px_12px_0_0_#000] relative overflow-hidden">
             <div className="absolute top-0 right-0 bg-emerald-400 text-black px-6 py-2 font-black uppercase italic text-[10px] border-b-4 border-l-4 border-black">Live Preview</div>
@@ -158,6 +199,7 @@ export default function WhatsAppOutreach() {
             </button>
           </div>
         </div>
+
       </div>
     </div>
   );
