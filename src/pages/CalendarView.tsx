@@ -9,7 +9,7 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 const locales = { 'en-US': enUS };
 const localizer = dateFnsLocalizer({ format, parse, startOfWeek, getDay, locales });
 
-const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzV0MLA_CDLAKmmWK2Ss0ZM03pl_3Wn9gwBiNIXlQ36pDniL0V38e_7lXk2H61ssfP2/exec';
+const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzu4cEvo4nGnjH8D3j22wUem07Hpqh06UDcb9nSWMwRYItKudDvZg8bqIN0LV0bFJha/exec';
 
 const MEETING_ROOMS = [
   { name: 'Germanium (GE)', email: 'c_18887npjdt67ih5lmtfgahccqnne8@resource.calendar.google.com' },
