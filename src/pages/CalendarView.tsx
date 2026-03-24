@@ -9,7 +9,7 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 const locales = { 'en-US': enUS };
 const localizer = dateFnsLocalizer({ format, parse, startOfWeek, getDay, locales });
 
-const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyfow334aqDL2xDeelMg2T9QY46oxtn4eTPMoXJmgBfE7Ekk0Fl1vfCgsuaF3W3HPiY/exec';
+const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzBg5tmc0gSurQPF1w0MJHmEnkM-VeyDJ9FCwRuvxXJRpY59opi4uaWjJzpkF-7YtjR/exec';
 
 const MEETING_ROOMS = [
   { name: 'Germanium (GE)', email: 'c_18887npjdt67ih5lmtfgahccqnne8@resource.calendar.google.com' },
@@ -86,7 +86,6 @@ export default function CalendarView() {
           title: app.name,
           role: app.job_role,
           rawDate: h.date,
-          eventId: h.eventId // 🔥 Store the ID for deletion
         })));
       setEvents(calendarEvents);
     } finally { setLoading(false); }
@@ -153,9 +152,9 @@ export default function CalendarView() {
         } catch (err) { console.error("Resume convert error", err); }
       }
 
-      // NOTE: We change to regular fetch to try and capture the eventId return
-      const response = await fetch(GOOGLE_SCRIPT_URL, {
+      await fetch(GOOGLE_SCRIPT_URL, {
         method: 'POST', 
+        mode: 'no-cors', // Use no-cors for Google Script compatibility
         body: JSON.stringify({
           name: selectedApp.name, 
           role: selectedApp.job_role, 
@@ -170,14 +169,11 @@ export default function CalendarView() {
         })
       });
 
-      // Google Scripts might return an opaque response in some modes, 
-      // but we prepare for the ID anyway.
       const ts = `${formDate}T${formTime}:00+08:00`;
       let history = [...(selectedApp.status_history || []), { 
         status: 'Interview Scheduled', 
         date: ts, 
         isManual: true,
-        // eventId: ... (We'll capture this better in the next iteration if needed)
       }];
 
       await supabase.from('applicants').update({ status_history: history }).eq('id', selectedApp.id);
@@ -195,30 +191,31 @@ export default function CalendarView() {
 
   const handleDelete = async () => {
     if (!selectedApp) return;
-    
-    // Find the specific entry in history to get the eventId
-    const targetDate = `${formDate}T${formTime}:00+08:00`;
-    const targetEntry = (selectedApp.status_history || []).find(h => h.date === targetDate);
-
     if (!window.confirm(`⚠️ PERMANENTLY DELETE interview for ${selectedApp.name} from ATS & Google Calendar?`)) return;
     
     setIsSyncing(true);
     try {
-      // 🔥 1. TELL GOOGLE TO DELETE THE EVENT GLOBALLY
-      // We send the 'delete' action to your script v9.2
+      // 🔥 1. TELL GOOGLE TO SEARCH-AND-DESTROY THE EVENT
+      // This uses Candidate Name + Date + Time to find the event on ANY calendar.
       await fetch(GOOGLE_SCRIPT_URL, {
         method: 'POST',
+        mode: 'no-cors',
         body: JSON.stringify({
             action: 'delete',
-            eventId: targetEntry?.eventId, // Sent from stored history
-            recruiterEmail: currentUser?.email,
-            roomEmail: selectedRoom
+            name: selectedApp.name,
+            date: formDate,
+            time: formTime,
+            recruiterEmail: currentUser?.email
         })
       });
 
       // 2. REMOVE FROM SUPABASE
+      const targetDate = `${formDate}T${formTime}:00+08:00`;
       const newHistory = (selectedApp.status_history || []).filter(h => h.date !== targetDate);
-      await supabase.from('applicants').update({ status_history: newHistory }).eq('id', selectedApp.id);
+      
+      await supabase.from('applicants')
+        .update({ status_history: newHistory })
+        .eq('id', selectedApp.id);
         
       setShowModal(false); 
       resetForm(); 
