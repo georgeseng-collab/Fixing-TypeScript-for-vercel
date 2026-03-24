@@ -9,7 +9,7 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 const locales = { 'en-US': enUS };
 const localizer = dateFnsLocalizer({ format, parse, startOfWeek, getDay, locales });
 
-const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyBzu5QfSOF0P-P5vaQYAZk9vgM2r92pfoNKJXTvakQxYpvisRa6GlnAIcjtZvUgqNw/exec';
+const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzV0MLA_CDLAKmmWK2Ss0ZM03pl_3Wn9gwBiNIXlQ36pDniL0V38e_7lXk2H61ssfP2/exec';
 
 const MEETING_ROOMS = [
   { name: 'Germanium (GE)', email: 'c_18887npjdt67ih5lmtfgahccqnne8@resource.calendar.google.com' },
@@ -24,6 +24,7 @@ export default function CalendarView() {
   const [events, setEvents] = useState([]);
   const [applicants, setApplicants] = useState([]);
   const [teamMembers, setTeamMembers] = useState([]);
+  const [currentUser, setCurrentUser] = useState(null); // Added to track logged-in member
   const [loading, setLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -49,7 +50,15 @@ export default function CalendarView() {
   const [isScanning, setIsScanning] = useState(false);
   const [hasScanned, setHasScanned] = useState(false);
 
-  useEffect(() => { fetchData(); }, []);
+  // Updated to fetch user session on mount
+  useEffect(() => { 
+    const getInitialData = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setCurrentUser(user);
+      fetchData(); 
+    };
+    getInitialData();
+  }, []);
 
   useEffect(() => {
     setHasScanned(false); setSuggestions([]); setUnreachableEmails([]); setRoomAlt([]); setBusyPeople([]);
@@ -147,10 +156,16 @@ export default function CalendarView() {
       await fetch(GOOGLE_SCRIPT_URL, {
         method: 'POST', mode: 'no-cors', 
         body: JSON.stringify({
-          name: selectedApp.name, role: selectedApp.job_role, date: formDate, time: formTime,
-          guests: allGuests, roomEmail: selectedRoom, duration: duration,
+          name: selectedApp.name, 
+          role: selectedApp.job_role, 
+          date: formDate, 
+          time: formTime,
+          guests: allGuests, 
+          roomEmail: selectedRoom, 
+          duration: duration,
           roomName: MEETING_ROOMS.find(r => r.email === selectedRoom)?.name || 'Online',
-          fileBase64: base64Resume 
+          fileBase64: base64Resume,
+          recruiterEmail: currentUser?.email // 🔥 Added to ensure the team member is identified
         })
       });
 
@@ -174,7 +189,6 @@ export default function CalendarView() {
     if (!window.confirm(`⚠️ PERMANENTLY DELETE interview for ${selectedApp.name} from the ATS?`)) return;
     setIsSyncing(true);
     try {
-      // Find the specific entry in history based on the stored time
       const targetDate = `${formDate}T${formTime}:00+08:00`;
       const newHistory = (selectedApp.status_history || []).filter(h => h.date !== targetDate);
       
@@ -188,7 +202,7 @@ export default function CalendarView() {
     } catch (err) {
       console.error("Delete Error:", err);
     } finally { 
-      setIsSyncing(false); // Fixed: should be false
+      setIsSyncing(false); 
     }
   };
 
@@ -355,7 +369,6 @@ export default function CalendarView() {
                 <div className="space-y-6 text-black">
                   <h2 className="text-4xl font-black italic uppercase tracking-tighter leading-none border-b-4 border-black pb-4">3. Final Review</h2>
                   
-                  {/* --- DELETE BUTTON Restored Here --- */}
                   <div className="flex justify-end -mb-4">
                      <button 
                         onClick={handleDelete}
