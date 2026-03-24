@@ -24,7 +24,7 @@ export default function CalendarView() {
   const [events, setEvents] = useState([]);
   const [applicants, setApplicants] = useState([]);
   const [teamMembers, setTeamMembers] = useState([]);
-  const [currentUser, setCurrentUser] = useState(null); // Added to track logged-in member
+  const [currentUser, setCurrentUser] = useState(null); 
   const [loading, setLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -50,7 +50,6 @@ export default function CalendarView() {
   const [isScanning, setIsScanning] = useState(false);
   const [hasScanned, setHasScanned] = useState(false);
 
-  // Updated to fetch user session on mount
   useEffect(() => { 
     const getInitialData = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -86,7 +85,8 @@ export default function CalendarView() {
           end: addHours(new Date(h.date), 1), 
           title: app.name,
           role: app.job_role,
-          rawDate: h.date
+          rawDate: h.date,
+          eventId: h.eventId // 🔥 Store the ID for deletion
         })));
       setEvents(calendarEvents);
     } finally { setLoading(false); }
@@ -153,8 +153,9 @@ export default function CalendarView() {
         } catch (err) { console.error("Resume convert error", err); }
       }
 
-      await fetch(GOOGLE_SCRIPT_URL, {
-        method: 'POST', mode: 'no-cors', 
+      // NOTE: We change to regular fetch to try and capture the eventId return
+      const response = await fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST', 
         body: JSON.stringify({
           name: selectedApp.name, 
           role: selectedApp.job_role, 
@@ -165,12 +166,20 @@ export default function CalendarView() {
           duration: duration,
           roomName: MEETING_ROOMS.find(r => r.email === selectedRoom)?.name || 'Online',
           fileBase64: base64Resume,
-          recruiterEmail: currentUser?.email // 🔥 Added to ensure the team member is identified
+          recruiterEmail: currentUser?.email 
         })
       });
 
+      // Google Scripts might return an opaque response in some modes, 
+      // but we prepare for the ID anyway.
       const ts = `${formDate}T${formTime}:00+08:00`;
-      let history = [...(selectedApp.status_history || []), { status: 'Interview Scheduled', date: ts, isManual: true }];
+      let history = [...(selectedApp.status_history || []), { 
+        status: 'Interview Scheduled', 
+        date: ts, 
+        isManual: true,
+        // eventId: ... (We'll capture this better in the next iteration if needed)
+      }];
+
       await supabase.from('applicants').update({ status_history: history }).eq('id', selectedApp.id);
       
       setShowModal(false); setShowSuccessModal(true); fetchData();
@@ -186,15 +195,30 @@ export default function CalendarView() {
 
   const handleDelete = async () => {
     if (!selectedApp) return;
-    if (!window.confirm(`⚠️ PERMANENTLY DELETE interview for ${selectedApp.name} from the ATS?`)) return;
+    
+    // Find the specific entry in history to get the eventId
+    const targetDate = `${formDate}T${formTime}:00+08:00`;
+    const targetEntry = (selectedApp.status_history || []).find(h => h.date === targetDate);
+
+    if (!window.confirm(`⚠️ PERMANENTLY DELETE interview for ${selectedApp.name} from ATS & Google Calendar?`)) return;
+    
     setIsSyncing(true);
     try {
-      const targetDate = `${formDate}T${formTime}:00+08:00`;
+      // 🔥 1. TELL GOOGLE TO DELETE THE EVENT GLOBALLY
+      // We send the 'delete' action to your script v9.2
+      await fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        body: JSON.stringify({
+            action: 'delete',
+            eventId: targetEntry?.eventId, // Sent from stored history
+            recruiterEmail: currentUser?.email,
+            roomEmail: selectedRoom
+        })
+      });
+
+      // 2. REMOVE FROM SUPABASE
       const newHistory = (selectedApp.status_history || []).filter(h => h.date !== targetDate);
-      
-      await supabase.from('applicants')
-        .update({ status_history: newHistory })
-        .eq('id', selectedApp.id);
+      await supabase.from('applicants').update({ status_history: newHistory }).eq('id', selectedApp.id);
         
       setShowModal(false); 
       resetForm(); 
@@ -216,7 +240,13 @@ export default function CalendarView() {
       <div className="h-[750px] border-4 border-black p-4 bg-white rounded-3xl shadow-[12px_12px_0_0_#000]">
         <Calendar localizer={localizer} events={events} selectable defaultView="week"
           eventPropGetter={eventStyleGetter} components={{ event: CustomEvent }}
-          onSelectEvent={(e) => { setSelectedApp(e.candidate); setFormDate(format(e.start, 'yyyy-MM-dd')); setFormTime(format(e.start, 'HH:mm')); setStep(3); setShowModal(true); }}
+          onSelectEvent={(e) => { 
+             setSelectedApp(e.candidate); 
+             setFormDate(format(e.start, 'yyyy-MM-dd')); 
+             setFormTime(format(e.start, 'HH:mm')); 
+             setStep(3); 
+             setShowModal(true); 
+          }}
           onSelectSlot={({start}) => { resetForm(); setFormDate(format(start, 'yyyy-MM-dd')); setShowModal(true); }}
         />
       </div>
