@@ -9,19 +9,17 @@ pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfVersion
 export default function MatchHub() {
   const [files, setFiles] = useState([]);
   const [jdText, setJdText] = useState('');
-  const [jdTitle, setJdTitle] = useState(''); // For naming new JDs
-  const [savedJDs, setSavedJDs] = useState([]); // Library of JDs
+  const [jdTitle, setJdTitle] = useState('');
+  const [savedJDs, setSavedJDs] = useState([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [progress, setProgress] = useState({ current: 0, total: 0, status: '' });
   const [results, setResults] = useState([]);
 
-  // Load Saved JDs from storage on mount
   useEffect(() => {
     const stored = localStorage.getItem('genie_jd_library');
     if (stored) setSavedJDs(JSON.parse(stored));
   }, []);
 
-  // --- JD Library Functions ---
   const saveCurrentJD = () => {
     if (!jdText || !jdTitle) return alert("Enter both a Title and JD content to save.");
     const newJD = { id: Date.now(), title: jdTitle, content: jdText };
@@ -48,7 +46,6 @@ export default function MatchHub() {
     if (uploadedFiles.length > 0) { setFiles(uploadedFiles); setResults([]); }
   };
 
-  // --- Extraction & Diagnostic Logic (All previous fixes included) ---
   const extractText = async (file) => {
     const fileName = file.name.toLowerCase();
     const arrayBuffer = await file.arrayBuffer();
@@ -69,18 +66,20 @@ export default function MatchHub() {
     return "";
   };
 
+  // --- UPDATED DIAGNOSTIC LOGIC WITH GLOBAL FEATURES ---
   const runDiagnostic = (text, jd, fileName) => {
     const currentYear = 2026;
     const lowerText = text.toLowerCase();
     
-    // 1. DOB SHIELD
+    // 1. DOB SHIELD (Primary)
     const dobMatch = text.match(/(?:birth|dob|born|date of birth).{0,25}\b(\d{4})\b/i);
     let birthYear = dobMatch ? parseInt(dobMatch[1]) : null;
 
-    // 2. GLOBAL & LOCAL MILESTONES (Oldest Anchor Logic)
+    // 2. GLOBAL & LOCAL MILESTONES (Expanded for Global Mapping)
     const milestones = [
+      { key: "phd", age: 30 }, { key: "doctorate", age: 30 },
       { key: "master", age: 25 }, { key: "mba", age: 28 },
-      { key: "university", age: 23 }, { key: "bachelor", age: 23 },
+      { key: "university", age: 23 }, { key: "bachelor", age: 23 }, { key: "college", age: 22 },
       { key: "polytechnic", age: 20 }, { key: "diploma", age: 20 },
       { key: "ite", age: 18 }, { key: "nitec", age: 18 },
       { key: "junior college", age: 18 }, { key: "high school", age: 18 },
@@ -88,45 +87,62 @@ export default function MatchHub() {
     ];
 
     let finalAge = null;
-    let method = "Unknown Profile";
+    let method = "Manual Review Required";
 
-    if (birthYear && (currentYear - birthYear) < 75) {
+    // --- STRATEGY A: Verified DOB ---
+    if (birthYear && (currentYear - birthYear) < 75 && (currentYear - birthYear) > 18) {
       finalAge = currentYear - birthYear;
-      method = "Verified DOB";
+      method = "Verified DOB (Shield)";
     } else {
       let oldestYearFound = Infinity;
       let mAge = 22;
 
+      // --- STRATEGY B: Milestone Anchor (Global + Local) ---
       milestones.forEach(m => {
         if (lowerText.includes(m.key)) {
+          // Look for years within 300 characters of the keyword
           const mRegex = new RegExp(`${m.key}[\\s\\S]{0,300}\\b(19|20)\\d{2}\\b`, 'gi');
           const mMatch = text.match(mRegex);
           if (mMatch) {
             const mYears = mMatch.join(" ").match(/\b\d{4}\b/g).map(Number);
             const earliest = Math.min(...mYears);
-            if (earliest < oldestYearFound) {
+            if (earliest < oldestYearFound && earliest > 1960) {
               oldestYearFound = earliest;
               mAge = m.age;
-              method = `${m.key.toUpperCase()} Anchor (${earliest})`;
+              method = `Global Anchor: ${m.key.toUpperCase()} (${earliest})`;
             }
           }
         }
       });
 
+      // --- STRATEGY C: Earliest Work/Date Anchor (Mathematical Backtracking) ---
+      // If no specific milestone keywords, sweep the document for the absolute earliest date
+      if (oldestYearFound === Infinity) {
+        const allYears = text.match(/\b(19|20)\d{2}\b/g);
+        if (allYears) {
+          const validYears = allYears.map(Number).filter(y => y > 1960 && y < (currentYear - 2));
+          if (validYears.length > 0) {
+            oldestYearFound = Math.min(...validYears);
+            mAge = 20; // Assume 20 as base age for earliest year found
+            method = `Global Sweep (Earliest: ${oldestYearFound})`;
+          }
+        }
+      }
+
       if (oldestYearFound !== Infinity) {
         finalAge = (currentYear - oldestYearFound) + mAge;
       } else {
-        // Experience Backtrack Fallback
+        // --- STRATEGY D: Experience Backtrack Fallback ---
         const expMatch = text.match(/(\d{1,2})\+?\s*(?:years?|yrs?)\s*(?:experience|exp)/i);
         if (expMatch) {
-            finalAge = 21 + parseInt(expMatch[1]);
-            method = `Exp. Backtrack (${expMatch[1]} yrs)`;
+            finalAge = 22 + parseInt(expMatch[1]);
+            method = `Exp. Backtrack (${expMatch[1]} yrs exp)`;
         }
       }
     }
 
     // 3. COMPANY & MATCH ANALYSIS
-    const companyMatches = text.match(/[A-Z][a-z]+(?:\s[A-Z][a-z]+)*\s(Pte Ltd|Ltd|Inc|Group|Corp)/g) || ["Professional Exp."];
+    const companyMatches = text.match(/[A-Z][a-z]+(?:\s[A-Z][a-z]+)*\s(Pte Ltd|Ltd|Inc|Group|Corp|LLC|GmbH)/g) || ["Professional Experience"];
     const jdKeywords = jd.toLowerCase().match(/\b(\w{4,})\b/g) || [];
     const matches = [...new Set(jdKeywords)].filter(word => lowerText.includes(word));
     const score = Math.min(Math.round((matches.length / (jdKeywords.length || 1)) * 100) + 25, 99);
@@ -134,7 +150,7 @@ export default function MatchHub() {
     return {
       name: fileName.replace(/\.[^/.]+$/, ""),
       compatibility: score,
-      age: finalAge ? `${finalAge - 2}-${finalAge + 1}` : "Manual Review",
+      age: finalAge ? `${finalAge - 2}-${finalAge + 1}` : "Review Required",
       method,
       companies: [...new Set(companyMatches)].slice(0, 2).join(", "),
       pros: [finalAge > 35 ? "Strategic Seniority" : "Active Career Path"],
@@ -165,7 +181,7 @@ export default function MatchHub() {
       <div className="mb-10 bg-slate-900 text-white p-10 rounded-[3rem] shadow-[10px_10px_0_0_#10b981] border-4 border-black flex justify-between items-center">
         <div>
           <h1 className="text-5xl font-black italic uppercase tracking-tighter">Genie Match Hub</h1>
-          <p className="text-emerald-400 font-bold text-xs uppercase tracking-[0.4em] mt-2 italic">Enterprise JD Library • Singapore Milestone Engine</p>
+          <p className="text-emerald-400 font-bold text-xs uppercase tracking-[0.4em] mt-2 italic">Enterprise JD Library • Global Milestone Engine</p>
         </div>
       </div>
 
@@ -174,7 +190,6 @@ export default function MatchHub() {
         {/* LEFT: CONTROLS & JD LIBRARY */}
         <div className="lg:col-span-1 space-y-6">
           
-          {/* 1. Saved JD Library */}
           <div className="bg-white p-6 border-4 border-black rounded-[2rem] shadow-[6px_6px_0_0_#000]">
             <h3 className="font-black uppercase italic text-xs mb-4 text-emerald-600">Saved JD Library</h3>
             <div className="space-y-2 max-h-48 overflow-y-auto pr-2 no-scrollbar">
@@ -251,7 +266,6 @@ export default function MatchHub() {
                 </table>
               </div>
 
-              {/* Detail Cards */}
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
                 {results.map((res, i) => (
                   <div key={i} className="bg-white border-4 border-black rounded-[3rem] p-8 shadow-[10px_10px_0_0_#000] flex flex-col">
