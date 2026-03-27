@@ -85,7 +85,7 @@ export default function WhatsAppOutreach() {
                `3. Cross the traffic light and turn right into the sheltered walkway.\n` +
                `4. Walk past the fire station (on your left).\n` +
                `5. Cross the road and turn into Ang Mo Kio Street 62.\n` +
-               `6. Go up the stairs next to bus stop (802) near the Link @ AMK board.\n` +
+               `6. Go up the stairs next to bus stop (B02) near the Link @ AMK board.\n` +
                `7. Arrive at Geniebook #01-30.\n\n` +
                `*View Direction Map PDF:* ${MAP_LINK}\n\n`;
       }
