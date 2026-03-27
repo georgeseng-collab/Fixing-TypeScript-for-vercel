@@ -1,90 +1,90 @@
 // @ts-nocheck
-import React, { useState, useEffect } from 'react';
-import { supabase } from '../db';
+import React, { useState } from 'react';
 
 export default function MatchHub() {
-  const [applicants, setApplicants] = useState([]);
-  const [selectedAppId, setSelectedAppId] = useState('');
+  const [file, setFile] = useState(null);
   const [jdText, setJdText] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [result, setResult] = useState(null);
 
-  useEffect(() => {
-    fetchApplicants();
-  }, []);
-
-  const fetchApplicants = async () => {
-    const { data } = await supabase.from('applicants').select('*').order('name');
-    setApplicants(data || []);
+  // Handle File Selection
+  const handleFileChange = (e) => {
+    const uploadedFile = e.target.files[0];
+    if (uploadedFile) setFile(uploadedFile);
   };
 
-  const selectedApp = applicants.find(a => a.id === selectedAppId);
-
   const handleAnalyze = async () => {
-    if (!selectedApp || !jdText) return alert("Please select a candidate and provide a JD!");
+    if (!file || !jdText) return alert("Please upload a resume and paste a JD!");
     
     setIsAnalyzing(true);
     setResult(null);
 
     try {
-      // In your actual implementation, you would send the selectedApp.resume_text 
-      // (or the PDF URL) and the jdText to your OpenAI/AI Edge function.
-      
-      // --- THE AI PROMPT LOGIC ---
-      /* Prompt: "Compare this Resume and Job Description. 
-        1. Calculate Estimated Age: Find earliest Grad Year (assume age 22) or earliest Job (assume age 20).
-        2. Compatibility %: Score out of 100 based on skills/experience match.
-        3. Justification: Short summary of why they match or don't."
-      */
+      // 1. Convert File to Base64 for the AI to read
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = async () => {
+        const base64File = reader.result.split(',')[1];
 
-      // Simulating AI Response for Demo
-      setTimeout(() => {
-        setResult({
-          compatibility: Math.floor(Math.random() * (95 - 60 + 1)) + 60, // Mock score
-          estimatedAge: 28, // Mock calculation
-          strengths: ["Relevant industry experience", "Skill alignment", "Local availability"],
-          gaps: ["Missing specific software certification", "Notice period longer than preferred"],
-          summary: `${selectedApp.name} shows strong alignment with the core technical requirements. Their background in similar roles suggest a fast ramp-up time.`
-        });
-        setIsAnalyzing(false);
-      }, 2000);
+        // 2. Call your AI Endpoint (OpenAI / Claude / Edge Function)
+        // Note: You would replace this fetch with your actual AI API call
+        /* PROMPT SUGGESTION:
+           "Analyze this resume and JD. 
+           1. Extract earliest graduation/work year to estimate age (assume age 22 at grad).
+           2. Score compatibility (0-100%) based on JD requirements.
+           3. List 3 key strengths and 2 missing gaps."
+        */
 
+        // SIMULATED AI RESPONSE
+        setTimeout(() => {
+          setResult({
+            compatibility: 88,
+            estimatedAge: 27,
+            summary: "Highly qualified candidate with direct experience in Sales. Strong cultural fit based on previous company background.",
+            strengths: ["Direct Competitor Experience", "Proven KPI Achievement", "Local Market Knowledge"],
+            gaps: ["No experience with Salesforce", "Short notice period requirement"],
+          });
+          setIsAnalyzing(false);
+        }, 2500);
+      };
     } catch (err) {
-      console.error(err);
+      console.error("AI Analysis Error:", err);
       setIsAnalyzing(false);
     }
   };
 
   return (
     <div className="max-w-6xl mx-auto p-10 text-left bg-slate-50 min-h-screen">
-      <div className="mb-10 bg-blue-600 text-white p-8 rounded-[2rem] shadow-[8px_8px_0_0_#000] border-4 border-black">
-        <h1 className="text-4xl font-black italic uppercase tracking-tighter leading-none">AI Match Hub</h1>
-        <p className="text-blue-100 font-bold text-[10px] uppercase tracking-[0.3em] mt-2">Resume vs. Job Description Analysis</p>
+      {/* Header */}
+      <div className="mb-10 bg-black text-white p-8 rounded-[2rem] shadow-[8px_8px_0_0_#10b981] border-4 border-black">
+        <h1 className="text-4xl font-black italic uppercase tracking-tighter leading-none">Match Engine v2.0</h1>
+        <p className="text-emerald-400 font-bold text-[10px] uppercase tracking-[0.3em] mt-2">Deep Resume Analysis • AI Extraction</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
         
-        {/* LEFT SIDE: INPUTS */}
+        {/* INPUT SECTION */}
         <div className="space-y-6">
+          {/* File Upload Zone */}
           <div className="bg-white p-8 border-4 border-black rounded-[2.5rem] shadow-[8px_8px_0_0_#000]">
-            <h3 className="font-black uppercase italic text-xs mb-4 text-blue-600">1. Select Candidate</h3>
-            <select 
-              className="w-full p-4 border-2 border-black rounded-xl font-bold bg-white outline-none"
-              value={selectedAppId}
-              onChange={(e) => setSelectedAppId(e.target.value)}
-            >
-              <option value="">-- Choose from Pipeline --</option>
-              {applicants.map(app => (
-                <option key={app.id} value={app.id}>{app.name} ({app.job_role})</option>
-              ))}
-            </select>
+            <h3 className="font-black uppercase italic text-xs mb-4 text-emerald-600">1. Upload Candidate Resume</h3>
+            <label className="flex flex-col items-center justify-center w-full h-32 border-4 border-dashed border-slate-200 rounded-2xl cursor-pointer hover:bg-slate-50 hover:border-emerald-400 transition-all">
+              <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                <span className="text-2xl mb-2">{file ? '📄' : '📤'}</span>
+                <p className="text-[10px] font-black uppercase text-slate-400">
+                  {file ? file.name : 'Drop PDF here or click to upload'}
+                </p>
+              </div>
+              <input type="file" className="hidden" accept=".pdf,.doc,.docx" onChange={handleFileChange} />
+            </label>
           </div>
 
+          {/* JD Input */}
           <div className="bg-white p-8 border-4 border-black rounded-[2.5rem] shadow-[8px_8px_0_0_#000]">
-            <h3 className="font-black uppercase italic text-xs mb-4 text-blue-600">2. Job Description</h3>
+            <h3 className="font-black uppercase italic text-xs mb-4 text-emerald-600">2. Target Job Description</h3>
             <textarea 
-              placeholder="Paste the JD requirements here..."
-              className="w-full h-64 p-4 border-2 border-black rounded-xl font-bold bg-slate-50 outline-none focus:bg-white transition-all text-sm"
+              placeholder="Paste specific JD requirements or key skills here..."
+              className="w-full h-48 p-4 border-2 border-black rounded-xl font-bold bg-slate-50 outline-none focus:bg-white transition-all text-xs leading-relaxed"
               value={jdText}
               onChange={(e) => setJdText(e.target.value)}
             />
@@ -92,76 +92,93 @@ export default function MatchHub() {
 
           <button 
             onClick={handleAnalyze}
-            disabled={isAnalyzing || !selectedAppId || !jdText}
-            className="w-full p-6 bg-black text-white rounded-2xl font-black uppercase shadow-[8px_8px_0_0_#3b82f6] hover:bg-blue-600 transition-all active:translate-y-1 disabled:opacity-50"
+            disabled={isAnalyzing || !file || !jdText}
+            className={`w-full p-6 text-white rounded-2xl font-black uppercase shadow-[8px_8px_0_0_#000] transition-all active:translate-y-1 active:shadow-none flex items-center justify-center gap-4 ${
+              isAnalyzing ? 'bg-slate-400' : 'bg-emerald-500 hover:bg-black'
+            }`}
           >
-            {isAnalyzing ? "🧠 AI Thinking..." : "Compare Profile →"}
+            {isAnalyzing ? (
+              <>
+                <div className="w-5 h-5 border-4 border-white border-t-transparent animate-spin rounded-full"></div>
+                Scanning Document...
+              </>
+            ) : "Start AI Match Test"}
           </button>
         </div>
 
-        {/* RIGHT SIDE: RESULTS */}
+        {/* RESULTS SECTION */}
         <div className="lg:sticky lg:top-10 h-fit">
           {!result && !isAnalyzing && (
-            <div className="bg-slate-200 border-4 border-dashed border-slate-400 p-20 rounded-[3rem] text-center">
-              <p className="font-black uppercase text-slate-400 italic">Results will appear here after analysis</p>
-            </div>
-          )}
-
-          {isAnalyzing && (
-            <div className="bg-white p-10 border-4 border-black rounded-[3rem] shadow-[12px_12px_0_0_#000] text-center animate-pulse">
-               <div className="w-20 h-20 bg-blue-100 rounded-full mx-auto mb-6 flex items-center justify-center border-4 border-black text-3xl">🤖</div>
-               <p className="font-black uppercase italic">Parsing Resume History...</p>
-               <p className="text-[10px] font-bold opacity-40 mt-2">Calculating Compatibility & Estimating Age</p>
+            <div className="bg-slate-200 border-4 border-dashed border-slate-300 p-20 rounded-[3rem] text-center">
+              <div className="text-4xl opacity-20 mb-4">🔬</div>
+              <p className="font-black uppercase text-slate-400 italic text-xs">Ready for analysis</p>
             </div>
           )}
 
           {result && (
-            <div className="bg-white p-8 border-4 border-black rounded-[3rem] shadow-[15px_15px_0_0_#000] space-y-6">
-              <div className="flex justify-between items-start border-b-4 border-black pb-6">
+            <div className="bg-white p-8 border-4 border-black rounded-[3rem] shadow-[15px_15px_0_0_#10b981] space-y-6 animate-in slide-in-from-right-10 duration-500">
+              <div className="flex justify-between items-center border-b-4 border-black pb-6">
                 <div>
-                  <h2 className="text-3xl font-black uppercase italic tracking-tighter leading-none">{selectedApp?.name}</h2>
-                  <p className="text-[10px] font-black uppercase text-blue-600 mt-2 tracking-widest">Analysis Result</p>
+                  <h2 className="text-3xl font-black uppercase italic tracking-tighter leading-none">Result</h2>
+                  <p className="text-[10px] font-black uppercase text-emerald-600 mt-2 tracking-widest">Calculated by AI Engine</p>
                 </div>
-                <div className="text-right">
-                  <div className="text-4xl font-black text-blue-600 leading-none">{result.compatibility}%</div>
-                  <p className="text-[8px] font-bold uppercase opacity-50">Match Score</p>
+                <div className="bg-black text-white p-4 rounded-2xl text-center min-w-[100px] border-2 border-emerald-400">
+                  <div className="text-3xl font-black leading-none">{result.compatibility}%</div>
+                  <p className="text-[8px] font-bold uppercase text-emerald-400">Match</p>
                 </div>
               </div>
 
+              {/* Age & Status */}
               <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-yellow-300 border-2 border-black rounded-2xl">
+                <div className="p-4 bg-yellow-300 border-2 border-black rounded-2xl shadow-[4px_4px_0_0_#000]">
                   <p className="text-[8px] font-black uppercase opacity-60">Estimated Age</p>
                   <p className="text-2xl font-black italic">~{result.estimatedAge} Years</p>
                 </div>
-                <div className="p-4 bg-emerald-100 border-2 border-black rounded-2xl">
-                  <p className="text-[8px] font-black uppercase opacity-60">Status</p>
-                  <p className="text-lg font-black uppercase italic">High Match</p>
+                <div className="p-4 bg-slate-900 text-white border-2 border-black rounded-2xl shadow-[4px_4px_0_0_#000]">
+                  <p className="text-[8px] font-black uppercase text-slate-500 font-bold">Recommendation</p>
+                  <p className="text-lg font-black uppercase italic text-emerald-400">Shortlist</p>
                 </div>
               </div>
 
-              <div className="space-y-4">
-                <p className="text-xs font-bold leading-relaxed bg-slate-50 p-4 border-2 border-black rounded-xl italic">
-                  "{result.summary}"
-                </p>
-                
-                <div className="space-y-2">
-                  <p className="text-[10px] font-black uppercase text-emerald-600">✅ Key Strengths</p>
-                  <div className="flex flex-wrap gap-2">
-                    {result.strengths.map(s => <span key={s} className="px-3 py-1 bg-emerald-50 border border-emerald-500 rounded-lg text-[9px] font-bold uppercase">{s}</span>)}
-                  </div>
+              {/* Analysis Text */}
+              <div className="space-y-6">
+                <div className="bg-slate-50 p-5 border-2 border-black rounded-2xl italic">
+                  <p className="text-xs font-bold text-slate-700 leading-relaxed">
+                    "{result.summary}"
+                  </p>
                 </div>
 
-                <div className="space-y-2">
-                  <p className="text-[10px] font-black uppercase text-rose-600">⚠️ Skill Gaps</p>
-                  <div className="flex flex-wrap gap-2">
-                    {result.gaps.map(g => <span key={g} className="px-3 py-1 bg-rose-50 border border-rose-500 rounded-lg text-[9px] font-bold uppercase">{g}</span>)}
+                <div className="grid grid-cols-1 gap-4">
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-black uppercase text-emerald-600 flex items-center gap-2">
+                      <span className="w-2 h-2 bg-emerald-500 rounded-full"></span> Match Strengths
+                    </p>
+                    <ul className="space-y-1">
+                      {result.strengths.map(s => (
+                        <li key={s} className="text-[11px] font-black uppercase bg-emerald-50 p-2 rounded-lg border border-emerald-200">
+                          + {s}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-black uppercase text-rose-500 flex items-center gap-2">
+                      <span className="w-2 h-2 bg-rose-500 rounded-full"></span> Potential Gaps
+                    </p>
+                    <ul className="space-y-1">
+                      {result.gaps.map(g => (
+                        <li key={g} className="text-[11px] font-black uppercase bg-rose-50 p-2 rounded-lg border border-rose-200">
+                          - {g}
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 </div>
               </div>
             </div>
           )}
         </div>
-
       </div>
     </div>
   );
