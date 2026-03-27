@@ -50,21 +50,27 @@ export default function Layout({ children }) {
               </div>
             </Link>
 
-            {/* Main Navigation - FIXED: No longer hidden on small screens */}
-            {/* Added: overflow-x-auto so you can swipe the menu on phones */}
+            {/* Main Navigation - Grouped by Logic */}
             <div className="flex items-center gap-1 bg-slate-100/50 dark:bg-slate-800/50 p-1 rounded-[2rem] overflow-x-auto no-scrollbar max-w-full">
+              
+              {/* ZONE 1: DISCOVERY */}
               <Link to="/" className={navLink('/')}>📊 Pipeline</Link>
               <Link to="/search" className={navLink('/search')}>🔍 Search</Link>
-              <Link to="/leaderboard" className={navLink('/leaderboard')}>🏆 Challenges</Link>
-              <Link to="/calendar" className={navLink('/calendar')}>📅 Calendar</Link>
+              <Link to="/match" className={navLink('/match')}>🧠 AI Match</Link>
               
-              {/* NEW WHATSAPP OUTREACH FEATURE */}
-              <Link to="/whatsapp" className={navLink('/whatsapp')}>💬 Outreach</Link>
-              
-              <Link to="/team" className={navLink('/team')}>👥 Team</Link>
-              
+              {/* Divider 1 */}
               <div className="h-4 w-[1px] bg-slate-300 dark:bg-slate-700 mx-2 shrink-0"></div>
               
+              {/* ZONE 2: OPERATIONS */}
+              <Link to="/leaderboard" className={navLink('/leaderboard')}>🏆 Challenges</Link>
+              <Link to="/calendar" className={navLink('/calendar')}>📅 Calendar</Link>
+              <Link to="/whatsapp" className={navLink('/whatsapp')}>💬 Outreach</Link>
+              <Link to="/team" className={navLink('/team')}>👥 Team</Link>
+              
+              {/* Divider 2 */}
+              <div className="h-4 w-[1px] bg-slate-300 dark:bg-slate-700 mx-2 shrink-0"></div>
+              
+              {/* ZONE 3: ADMIN */}
               <Link to="/offers" className={navLink('/offers')}>✨ Offers</Link>
               <Link to="/approvals" className={navLink('/approvals')}>📋 Approvals</Link>
               <Link to="/archive" className={navLink('/archive')}>🗄️ Archive</Link>
@@ -72,7 +78,6 @@ export default function Layout({ children }) {
           </div>
           
           <div className="flex items-center gap-3 md:gap-6 shrink-0 ml-4">
-            {/* Dark Mode Toggle */}
             <button 
               type="button"
               onClick={toggleTheme}
@@ -95,7 +100,6 @@ export default function Layout({ children }) {
         </div>
       </nav>
 
-      {/* Ultra-Wide Main Area */}
       <main className="max-w-[1700px] mx-auto px-4 md:px-8 py-8 md:py-12">
         <div className="animate-in fade-in zoom-in-95 duration-500">
           {children}

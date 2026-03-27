@@ -11,13 +11,14 @@ import Dashboard from './pages/Dashboard';
 import ApplicantForm from './pages/ApplicantForm';
 import CalendarView from './pages/CalendarView';
 import CandidateSearch from './pages/CandidateSearch';
+import MatchHub from './pages/MatchHub'; // <--- NEW IMPORT
 import Archive from './pages/Archive';
 import Login from './pages/Login';
 import EmailHub from './pages/EmailHub'; 
 import ApprovalHub from './pages/ApprovalHub';
 import TeamSettings from './pages/TeamSettings';
 import Leaderboard from './pages/Leaderboard';
-import WhatsAppOutreach from './pages/WhatsAppOutreach'; // <--- NEW IMPORT
+import WhatsAppOutreach from './pages/WhatsAppOutreach';
 
 export default function App() {
   const [session, setSession] = useState(undefined);
@@ -51,17 +52,21 @@ export default function App() {
         <Route path="/" element={session ? <Layout><Dashboard /></Layout> : <Navigate to="/login" />} />
         <Route path="/add" element={session ? <Layout><ApplicantForm /></Layout> : <Navigate to="/login" />} />
         <Route path="/search" element={session ? <Layout><CandidateSearch /></Layout> : <Navigate to="/login" />} />
+        
+        {/* NEW AI MATCH HUB ROUTE */}
+        <Route path="/match" element={session ? <Layout><MatchHub /></Layout> : <Navigate to="/login" />} />
+        
         <Route path="/calendar" element={session ? <Layout><CalendarView /></Layout> : <Navigate to="/login" />} />
         <Route path="/archive" element={session ? <Layout><Archive /></Layout> : <Navigate to="/login" />} />
         
-        {/* NEW WHATSAPP OUTREACH ROUTE */}
+        {/* WhatsApp & Outreach */}
         <Route path="/whatsapp" element={session ? <Layout><WhatsAppOutreach /></Layout> : <Navigate to="/login" />} />
         
         {/* Management & Internal Tools */}
         <Route path="/offers" element={session ? <Layout><EmailHub /></Layout> : <Navigate to="/login" />} />
         <Route path="/approvals" element={session ? <Layout><ApprovalHub /></Layout> : <Navigate to="/login" />} />
         
-        {/* NEW LEADERBOARD ROUTE (Challenges) */}
+        {/* Leaderboard (Challenges) */}
         <Route path="/leaderboard" element={session ? <Layout><Leaderboard /></Layout> : <Navigate to="/login" />} />
         
         {/* Team Settings */}
